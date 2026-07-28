@@ -1,0 +1,36 @@
+{
+  "name": "trips",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "supabase:init": "supabase init",
+    "supabase:link": "supabase link --project-ref gkwoevplwngfjcgiqgwv",
+    "supabase:migrations": "supabase migration list",
+    "supabase:push:dry": "supabase db push --dry-run",
+    "supabase:push": "supabase db push",
+    "supabase:types": "supabase gen types typescript --project-id gkwoevplwngfjcgiqgwv --schema public > src/types/database.types.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.52.1",
+    "next": "^16.2.12",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "server-only": "^0.0.1",
+    "zod": "^4.0.14"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.31.0",
+    "eslint-config-next": "^16.2.12",
+    "supabase": "^2.33.9",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

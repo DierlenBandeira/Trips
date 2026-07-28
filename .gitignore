@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+coverage
+*.log
+
+.env
+.env.local
+.env.*.local
+.vercel
+.supabase/.temp
+
+!.env.example
+!supabase/config.toml
+!supabase/migrations
