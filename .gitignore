@@ -9,6 +9,7 @@ coverage
 .env.*.local
 .vercel
 .supabase/.temp
+supabase/.temp
 
 !.env.example
 !supabase/config.toml
