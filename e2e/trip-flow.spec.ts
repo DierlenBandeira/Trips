@@ -124,7 +124,7 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
         gutter: getComputedStyle(element).scrollbarGutter,
       })),
     )
-    .toEqual({ overflowY: "auto", gutter: "stable" });
+    .toEqual({ overflowY: "scroll", gutter: "stable" });
 
   const editorMapRegion = page.getByRole("region", { name: "Mapa da viagem" });
   await expect
@@ -140,6 +140,19 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   await expect(
     page.locator(".destination-card").filter({ hasText: "Ponto 2" }),
   ).toBeVisible();
+  const stopList = page.locator(".destination-list");
+  await expect
+    .poll(() =>
+      stopList.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  const scrollPosition = await stopList.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    return element.scrollTop;
+  });
+  expect(scrollPosition).toBeGreaterThan(0);
   await expect
     .poll(() =>
       editorMapRegion.evaluate((element) => ({
