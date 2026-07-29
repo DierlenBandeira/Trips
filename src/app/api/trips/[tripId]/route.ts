@@ -41,6 +41,7 @@ export async function PATCH(request: Request, context: Context) {
       return fail("UNAUTHORIZED", "Acesso de edição inválido.", 401);
     }
     const input = updateTripSchema.parse(await request.json());
+    const admin = createAdminClient();
     const updates: Database["public"]["Tables"]["trips"]["Update"] = {};
     if (input.name !== undefined) updates.name = input.name;
     if (input.currency !== undefined) updates.currency = input.currency;
@@ -49,14 +50,22 @@ export async function PATCH(request: Request, context: Context) {
       updates.visibility = input.visibility;
       if (input.visibility === "private") updates.share_token = null;
     }
-    if (
-      input.regenerateShareToken ||
-      (input.visibility !== undefined && input.visibility !== "private")
-    ) {
+    if (input.regenerateShareToken) {
       updates.share_token = generateToken();
+    } else if (
+      input.visibility !== undefined &&
+      input.visibility !== "private"
+    ) {
+      const { data: current, error: currentError } = await admin
+        .from("trips")
+        .select("share_token")
+        .eq("id", tripId)
+        .maybeSingle();
+      if (currentError) throw new Error("Database read failed");
+      if (!current?.share_token) updates.share_token = generateToken();
     }
 
-    const { data, error } = await createAdminClient()
+    const { data, error } = await admin
       .from("trips")
       .update(updates)
       .eq("id", tripId)

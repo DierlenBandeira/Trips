@@ -1,59 +1,57 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
-
-type Stop = {
-  id: string;
-  position: number;
-  place_name: string;
-  country: string | null;
-  latitude: number;
-  longitude: number;
-  nightly_cost: number;
-  nights: number;
-  notes: string | null;
-};
-
-type Trip = {
-  id: string;
-  name: string;
-  currency: string;
-  travelers_count: number;
-  visibility: string;
-  share_token: string | null;
-  stops: Stop[];
-};
-
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error?.message || "A operação falhou.");
-  return result.data;
-}
+import {
+  Check,
+  CircleAlert,
+  LoaderCircle,
+  MapPinned,
+  Menu,
+  Plus,
+  Save,
+  Share2,
+} from "lucide-react";
+import { DestinationPanel } from "@/components/trip/DestinationPanel";
+import { TripKpiCard } from "@/components/trip/TripKpiCard";
+import { TripMap } from "@/components/map/TripMap";
+import { tripReducer } from "@/features/trips/trip-state";
+import type {
+  Currency,
+  SaveStatus,
+  Trip,
+  TripStop,
+} from "@/features/trips/types";
+import type { GeocodingResult } from "@/features/geocoding/types";
+import {
+  mergeStopChanges,
+  stopChangesToPayload,
+  tripToUpdatePayload,
+} from "@/features/trips/persistence";
+import { useTripRoute } from "@/hooks/use-trip-route";
+import { apiRequest, jsonRequest } from "@/lib/api/client";
 
 export function TripPlanner({ tripId }: { tripId: string }) {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      setTrip(await api<Trip>(`/api/trips/${tripId}`));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Acesso não autorizado.");
-    }
-  }, [tripId]);
 
   useEffect(() => {
     let active = true;
-    api<Trip>(`/api/trips/${tripId}`)
-      .then((nextTrip) => {
-        if (active) setTrip(nextTrip);
+    apiRequest<Trip>(`/api/trips/${tripId}`)
+      .then((data) => {
+        if (active) setTrip(data);
       })
       .catch((cause: unknown) => {
         if (active) {
-          setError(cause instanceof Error ? cause.message : "Acesso não autorizado.");
+          setError(
+            cause instanceof Error ? cause.message : "Acesso não autorizado.",
+          );
         }
       });
     return () => {
@@ -61,156 +59,576 @@ export function TripPlanner({ tripId }: { tripId: string }) {
     };
   }, [tripId]);
 
-  const totals = useMemo(() => {
-    const nights = trip?.stops.reduce((sum, stop) => sum + stop.nights, 0) || 0;
-    const lodging = trip?.stops.reduce(
-      (sum, stop) => sum + Number(stop.nightly_cost) * stop.nights,
-      0,
-    ) || 0;
-    return { nights, lodging };
-  }, [trip]);
-
-  async function addStop(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!trip) return;
-    setBusy(true);
-    setError("");
-    const form = new FormData(event.currentTarget);
-    try {
-      await api(`/api/trips/${tripId}/stops`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          position: trip.stops.length,
-          placeName: form.get("placeName"),
-          country: form.get("country") || null,
-          latitude: Number(form.get("latitude")),
-          longitude: Number(form.get("longitude")),
-          nightlyCost: Number(form.get("nightlyCost")),
-          nights: Number(form.get("nights")),
-          notes: form.get("notes") || null,
-        }),
-      });
-      event.currentTarget.reset();
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível adicionar.");
-    } finally {
-      setBusy(false);
-    }
+  if (error && !trip) {
+    return (
+      <main id="main-content" className="state-page">
+        <section className="state-card">
+          <CircleAlert size={32} />
+          <h1>Acesso indisponível</h1>
+          <p>{error}</p>
+          <Link href="/">Criar outra viagem</Link>
+        </section>
+      </main>
+    );
   }
+
+  if (!trip) {
+    return (
+      <main id="main-content" className="state-page">
+        <LoaderCircle className="spin" aria-label="Carregando roteiro" />
+      </main>
+    );
+  }
+
+  return <TripWorkspace initialTrip={trip} />;
+}
+
+function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
+  const [state, dispatch] = useReducer(tripReducer, {
+    trip: initialTrip,
+    selectedStopId: initialTrip.stops[0]?.id ?? null,
+  });
+  const [busy, setBusy] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+  const [error, setError] = useState("");
+  const [shareFeedback, setShareFeedback] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+  const [panelOpen, setPanelOpen] = useState(true);
+  const trip = state.trip;
+  const latestTripRef = useRef(trip);
+  const tripDirtyRef = useRef(false);
+  const tripRevisionRef = useRef(0);
+  const pendingStopChangesRef = useRef(
+    new Map<string, Partial<TripStop>>(),
+  );
+  const stopSaveTimersRef = useRef(new Map<string, number>());
+  const activeSavesRef = useRef(0);
+  const saveFailedRef = useRef(false);
+  useEffect(() => {
+    latestTripRef.current = trip;
+  }, [trip]);
+  const routing = useTripRoute(trip.id, trip.stops);
+  const selectStop = useCallback((stopId: string) => {
+    dispatch({ type: "select-stop", stopId });
+  }, []);
+
+  const addStop = useCallback(
+    async (input: {
+      placeName: string;
+      country: string;
+      region?: string;
+      formattedAddress?: string;
+      latitude: number;
+      longitude: number;
+    }) => {
+      setBusy(true);
+      setError("");
+      try {
+        const stop = await apiRequest<TripStop>(
+          `/api/trips/${trip.id}/stops`,
+          jsonRequest("POST", {
+            position: trip.stops.length,
+            placeName: input.placeName,
+            country: input.country || null,
+            region: input.region || null,
+            formattedAddress: input.formattedAddress || null,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            nightlyCost: 0,
+            nights: 1,
+          }),
+        );
+        dispatch({ type: "add-stop", stop });
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Não foi possível adicionar o destino.",
+        );
+        throw cause;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [trip.id, trip.stops.length],
+  );
+
+  const addMapPoint = useCallback(
+    async (coordinates: { latitude: number; longitude: number }) => {
+      setBusy(true);
+      let result: GeocodingResult | null = null;
+      try {
+        result = await apiRequest<GeocodingResult | null>(
+          `/api/geocoding/reverse?lat=${coordinates.latitude}&lon=${coordinates.longitude}`,
+        );
+      } catch {
+        // Reverse geocoding is an enhancement; coordinates remain usable.
+      }
+      try {
+        await addStop({
+          placeName:
+            result?.placeName || `Ponto no mapa ${trip.stops.length + 1}`,
+          country: result?.country || "",
+          region: result?.region || undefined,
+          formattedAddress: result?.formattedAddress,
+          latitude: coordinates.latitude,
+          longitude: coordinates.longitude,
+        });
+      } catch {
+        // addStop already exposes a user-facing error.
+      } finally {
+        setBusy(false);
+      }
+    },
+    [addStop, trip.stops.length],
+  );
+
+  const beginSave = useCallback(() => {
+    if (activeSavesRef.current === 0) saveFailedRef.current = false;
+    activeSavesRef.current += 1;
+    setSaveStatus("saving");
+  }, []);
+
+  const finishSave = useCallback((success: boolean) => {
+    if (!success) saveFailedRef.current = true;
+    activeSavesRef.current = Math.max(0, activeSavesRef.current - 1);
+    if (activeSavesRef.current > 0) return;
+    if (saveFailedRef.current) {
+      setSaveStatus("error");
+    } else if (
+      tripDirtyRef.current ||
+      pendingStopChangesRef.current.size > 0
+    ) {
+      setSaveStatus("dirty");
+    } else {
+      setSaveStatus("saved");
+    }
+  }, []);
+
+  const persistStop = useCallback(
+    async (stopId: string, changes: Partial<TripStop>) => {
+      beginSave();
+      try {
+        const updated = await apiRequest<TripStop>(
+          `/api/trips/${trip.id}/stops/${stopId}`,
+          {
+            ...jsonRequest("PATCH", stopChangesToPayload(changes)),
+            keepalive: true,
+          },
+        );
+        dispatch({
+          type: "update-stop",
+          stopId,
+          changes: {
+            ...updated,
+            ...pendingStopChangesRef.current.get(stopId),
+          },
+        });
+        finishSave(true);
+        return true;
+      } catch (cause) {
+        pendingStopChangesRef.current.set(
+          stopId,
+          mergeStopChanges(
+            changes,
+            pendingStopChangesRef.current.get(stopId) || {},
+          ),
+        );
+        setError(
+          cause instanceof Error ? cause.message : "Não foi possível salvar.",
+        );
+        finishSave(false);
+        return false;
+      }
+    },
+    [beginSave, finishSave, trip.id],
+  );
+
+  const queueStopSave = useCallback(
+    (stopId: string, changes: Partial<TripStop>) => {
+      dispatch({ type: "update-stop", stopId, changes });
+      pendingStopChangesRef.current.set(
+        stopId,
+        mergeStopChanges(
+          pendingStopChangesRef.current.get(stopId),
+          changes,
+        ),
+      );
+      const currentTimer = stopSaveTimersRef.current.get(stopId);
+      if (currentTimer) window.clearTimeout(currentTimer);
+      const timer = window.setTimeout(() => {
+        const pending = pendingStopChangesRef.current.get(stopId);
+        pendingStopChangesRef.current.delete(stopId);
+        stopSaveTimersRef.current.delete(stopId);
+        if (pending) void persistStop(stopId, pending);
+      }, 900);
+      stopSaveTimersRef.current.set(stopId, timer);
+      setSaveStatus("dirty");
+    },
+    [persistStop],
+  );
+
+  const flushStopSave = useCallback(
+    async (stopId: string, changes: Partial<TripStop>) => {
+      const currentTimer = stopSaveTimersRef.current.get(stopId);
+      if (currentTimer) window.clearTimeout(currentTimer);
+      stopSaveTimersRef.current.delete(stopId);
+      const pending = {
+        ...pendingStopChangesRef.current.get(stopId),
+        ...changes,
+      };
+      pendingStopChangesRef.current.delete(stopId);
+      await persistStop(stopId, pending);
+    },
+    [persistStop],
+  );
 
   async function removeStop(stopId: string) {
+    const pendingTimer = stopSaveTimersRef.current.get(stopId);
+    if (pendingTimer) window.clearTimeout(pendingTimer);
+    stopSaveTimersRef.current.delete(stopId);
+    pendingStopChangesRef.current.delete(stopId);
     setBusy(true);
+    setError("");
     try {
-      await api(`/api/trips/${tripId}/stops/${stopId}`, { method: "DELETE" });
-      await load();
+      await apiRequest(`/api/trips/${trip.id}/stops/${stopId}`, {
+        method: "DELETE",
+      });
+      dispatch({ type: "remove-stop", stopId });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível remover.");
+      setError(
+        cause instanceof Error ? cause.message : "Não foi possível remover.",
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  async function move(stopId: string, direction: -1 | 1) {
-    if (!trip) return;
-    const current = trip.stops.findIndex((stop) => stop.id === stopId);
-    const target = current + direction;
-    if (target < 0 || target >= trip.stops.length) return;
-    const ids = trip.stops.map((stop) => stop.id);
-    [ids[current], ids[target]] = [ids[target], ids[current]];
-    setBusy(true);
+  async function reorder(stopIds: string[]) {
+    const previousIds = trip.stops.map((stop) => stop.id);
+    dispatch({ type: "reorder-stops", stopIds });
+    beginSave();
     try {
-      await api(`/api/trips/${tripId}/stops/reorder`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ stopIds: ids }),
+      const stops = await apiRequest<TripStop[]>(
+        `/api/trips/${trip.id}/stops/reorder`,
+        jsonRequest("PUT", { stopIds }),
+      );
+      dispatch({
+        type: "reorder-stops",
+        stopIds: stops.map((stop) => stop.id),
       });
-      await load();
+      finishSave(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível reordenar.");
-    } finally {
-      setBusy(false);
+      dispatch({ type: "reorder-stops", stopIds: previousIds });
+      setError(
+        cause instanceof Error ? cause.message : "Não foi possível reordenar.",
+      );
+      finishSave(false);
     }
   }
 
-  async function share() {
-    setBusy(true);
+  const persistTrip = useCallback(async () => {
+    const revision = tripRevisionRef.current;
+    beginSave();
+    setError("");
     try {
-      const updated = await api<Trip>(`/api/trips/${tripId}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ visibility: "unlisted", regenerateShareToken: !trip?.share_token }),
+      const updated = await apiRequest<Trip>(
+        `/api/trips/${trip.id}`,
+        {
+          ...jsonRequest(
+            "PATCH",
+            tripToUpdatePayload({
+              name: trip.name,
+              currency: trip.currency,
+              travelers_count: trip.travelers_count,
+            }),
+          ),
+          keepalive: true,
+        },
+      );
+      if (tripRevisionRef.current === revision) {
+        tripDirtyRef.current = false;
+        dispatch({ type: "update-trip", changes: updated });
+      }
+      finishSave(true);
+      return true;
+    } catch (cause) {
+      tripDirtyRef.current = true;
+      setError(
+        cause instanceof Error ? cause.message : "Não foi possível salvar.",
+      );
+      finishSave(false);
+      return false;
+    }
+  }, [
+    beginSave,
+    finishSave,
+    trip.currency,
+    trip.id,
+    trip.name,
+    trip.travelers_count,
+  ]);
+
+  useEffect(() => {
+    if (!tripDirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      void persistTrip();
+    }, 1100);
+    return () => window.clearTimeout(timer);
+  }, [persistTrip]);
+
+  async function saveAll() {
+    const pendingStops = [...pendingStopChangesRef.current.entries()];
+    pendingStopChangesRef.current.clear();
+    stopSaveTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    stopSaveTimersRef.current.clear();
+    await Promise.all([
+      persistTrip(),
+      ...pendingStops.map(([stopId, changes]) =>
+        persistStop(stopId, changes),
+      ),
+    ]);
+  }
+
+  useEffect(() => {
+    const timerMap = stopSaveTimersRef.current;
+    const flushOnExit = () => {
+      const currentTrip = latestTripRef.current;
+      if (tripDirtyRef.current) {
+        void fetch(`/api/trips/${currentTrip.id}`, {
+          ...jsonRequest("PATCH", tripToUpdatePayload(currentTrip)),
+          keepalive: true,
+        });
+      }
+      pendingStopChangesRef.current.forEach((changes, stopId) => {
+        void fetch(`/api/trips/${currentTrip.id}/stops/${stopId}`, {
+          ...jsonRequest("PATCH", stopChangesToPayload(changes)),
+          keepalive: true,
+        });
       });
-      setTrip((current) => current ? { ...current, ...updated } : current);
+    };
+    window.addEventListener("pagehide", flushOnExit);
+    return () => {
+      window.removeEventListener("pagehide", flushOnExit);
+      timerMap.forEach((timer) => window.clearTimeout(timer));
+      flushOnExit();
+    };
+  }, [trip.id]);
+
+  async function shareTrip() {
+    setBusy(true);
+    setShareFeedback("");
+    try {
+      const updated = await apiRequest<Trip>(
+        `/api/trips/${trip.id}`,
+        jsonRequest("PATCH", {
+          visibility: "unlisted",
+          regenerateShareToken: !trip.share_token,
+        }),
+      );
+      dispatch({ type: "update-trip", changes: updated });
       if (updated.share_token) {
-        const url = `${window.location.origin}/share/${updated.share_token}`;
-        await navigator.clipboard.writeText(url);
-        window.alert("Link público copiado.");
+        const url = `${window.location.origin}/trip/${encodeURIComponent(
+          updated.slug,
+        )}?share=${encodeURIComponent(updated.share_token)}`;
+        setShareUrl(url);
+        const copied = await copyToClipboard(url);
+        setShareFeedback(
+          copied ? "Link copiado" : "Link pronto — copie abaixo",
+        );
+        if (copied) {
+          window.setTimeout(() => {
+            setShareFeedback("");
+            setShareUrl("");
+          }, 3500);
+        }
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível compartilhar.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível compartilhar.",
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  if (error && !trip) {
-    return <main><section className="panel empty"><h1>Acesso indisponível</h1><p>{error}</p><Link href="/">Criar outra viagem</Link></section></main>;
+  function changeTrip(changes: Partial<Trip>) {
+    tripRevisionRef.current += 1;
+    tripDirtyRef.current = true;
+    dispatch({ type: "update-trip", changes });
+    setSaveStatus("dirty");
   }
-  if (!trip) return <main><p className="loading">Carregando roteiro…</p></main>;
 
   return (
-    <main className="planner">
-      <header className="planner-header">
-        <div><p className="eyebrow">SEU ROTEIRO</p><h1>{trip.name}</h1></div>
-        <button className="secondary" disabled={busy} onClick={share}>Compartilhar</button>
+    <main id="main-content" className="trip-workspace">
+      <header className="workspace-header">
+        <Link href="/" className="brand-mark" aria-label="Trip Planner — início">
+          <MapPinned size={23} />
+        </Link>
+        <div className="trip-name-field">
+          <label htmlFor="trip-name">Nome da viagem</label>
+          <input
+            id="trip-name"
+            value={trip.name}
+            onChange={(event) => changeTrip({ name: event.target.value })}
+          />
+        </div>
+        <div className={`save-state state-${saveStatus}`} aria-live="polite">
+          <SaveStatusIcon status={saveStatus} />
+          <span>{saveStatusLabel(saveStatus)}</span>
+        </div>
+        <div className="workspace-actions">
+          <Link href="/" className="button ghost">
+            <Plus size={17} /> <span>Nova viagem</span>
+          </Link>
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={shareTrip}
+          >
+            {shareFeedback ? <Check size={17} /> : <Share2 size={17} />}
+            <span>{shareFeedback || "Compartilhar"}</span>
+          </button>
+          <button
+            type="button"
+            className="button primary"
+            disabled={saveStatus === "saving"}
+            onClick={saveAll}
+          >
+            <Save size={17} /> <span>Salvar</span>
+          </button>
+          <button
+            type="button"
+            className="mobile-panel-button"
+            aria-label="Abrir destinos"
+            aria-expanded={panelOpen}
+            onClick={() => setPanelOpen((open) => !open)}
+          >
+            <Menu size={20} />
+          </button>
+        </div>
       </header>
 
-      <section className="kpis" aria-label="Resumo da viagem">
-        <article><span>Destinos</span><strong>{trip.stops.length}</strong></article>
-        <article><span>Noites</span><strong>{totals.nights}</strong></article>
-        <article><span>Hospedagem</span><strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: trip.currency }).format(totals.lodging)}</strong></article>
-        <article><span>Por viajante</span><strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: trip.currency }).format(totals.lodging / trip.travelers_count)}</strong></article>
-      </section>
-
-      {error && <p className="error" role="alert">{error}</p>}
-      <section className="planner-grid">
-        <div className="stops panel">
-          <h2>Destinos</h2>
-          {trip.stops.length === 0 && <p className="muted">Adicione o primeiro destino ao roteiro.</p>}
-          {trip.stops.map((stop, index) => (
-            <article className="stop" key={stop.id}>
-              <span className="stop-number">{index + 1}</span>
-              <div>
-                <strong>{stop.place_name}</strong>
-                <p>{stop.country || "País não informado"} · {stop.nights} noites · {trip.currency} {Number(stop.nightly_cost).toFixed(2)}/noite</p>
-              </div>
-              <div className="stop-actions">
-                <button aria-label="Mover para cima" disabled={busy || index === 0} onClick={() => move(stop.id, -1)}>↑</button>
-                <button aria-label="Mover para baixo" disabled={busy || index === trip.stops.length - 1} onClick={() => move(stop.id, 1)}>↓</button>
-                <button aria-label="Remover" disabled={busy} onClick={() => removeStop(stop.id)}>×</button>
-              </div>
-            </article>
-          ))}
+      {error && <div className="workspace-error" role="alert">{error}</div>}
+      {shareUrl && (
+        <div className="share-toast" role="status" aria-live="polite">
+          <Check size={17} />
+          <span>{shareFeedback}</span>
+          <input
+            value={shareUrl}
+            readOnly
+            aria-label="Link público da viagem"
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <button
+            type="button"
+            aria-label="Fechar"
+            onClick={() => {
+              setShareFeedback("");
+              setShareUrl("");
+            }}
+          >
+            ×
+          </button>
         </div>
+      )}
 
-        <form className="panel stop-form" onSubmit={addStop}>
-          <h2>Novo destino</h2>
-          <label>Local<input name="placeName" required placeholder="Florença" /></label>
-          <label>País<input name="country" placeholder="Itália" /></label>
-          <div className="form-row">
-            <label>Latitude<input name="latitude" type="number" step="any" min="-90" max="90" required /></label>
-            <label>Longitude<input name="longitude" type="number" step="any" min="-180" max="180" required /></label>
+      <div className={`workspace-body${panelOpen ? " panel-open" : ""}`}>
+        <DestinationPanel
+          stops={trip.stops}
+          currency={trip.currency}
+          selectedStopId={state.selectedStopId}
+          busy={busy}
+          onAdd={addStop}
+          onRemove={removeStop}
+          onChange={queueStopSave}
+          onUpdate={flushStopSave}
+          onSelect={selectStop}
+          onReorder={reorder}
+        />
+        <section className="map-area">
+          <TripMap
+            stops={trip.stops}
+            currency={trip.currency}
+            selectedStopId={state.selectedStopId}
+            onSelectStop={selectStop}
+            onAddPoint={addMapPoint}
+            route={routing.route}
+            routeLoading={routing.loading}
+          />
+          <div className="trip-settings" aria-label="Configurações da viagem">
+            <label>
+              Moeda
+              <select
+                value={trip.currency}
+                onChange={(event) =>
+                  changeTrip({ currency: event.target.value as Currency })
+                }
+              >
+                <option value="EUR">EUR</option>
+                <option value="BRL">BRL</option>
+                <option value="USD">USD</option>
+                <option value="GBP">GBP</option>
+              </select>
+            </label>
+            <label>
+              Viajantes
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={trip.travelers_count}
+                onChange={(event) =>
+                  changeTrip({
+                    travelers_count: Math.max(1, Number(event.target.value)),
+                  })
+                }
+              />
+            </label>
           </div>
-          <div className="form-row">
-            <label>Noites<input name="nights" type="number" min="0" defaultValue="1" required /></label>
-            <label>Custo/noite<input name="nightlyCost" type="number" min="0" step="0.01" defaultValue="0" required /></label>
-          </div>
-          <label>Observações<textarea name="notes" rows={3} /></label>
-          <button disabled={busy}>{busy ? "Salvando…" : "Adicionar destino"}</button>
-        </form>
-      </section>
+          <TripKpiCard
+            stops={trip.stops}
+            travelersCount={trip.travelers_count}
+            currency={trip.currency}
+          />
+        </section>
+      </div>
     </main>
   );
+}
+
+function SaveStatusIcon({ status }: { status: SaveStatus }) {
+  if (status === "saving") return <LoaderCircle className="spin" size={14} />;
+  if (status === "error") return <CircleAlert size={14} />;
+  return <Check size={14} />;
+}
+
+function saveStatusLabel(status: SaveStatus) {
+  return {
+    idle: "Pronto",
+    dirty: "Alterações não salvas",
+    saving: "Salvando",
+    saved: "Salvo",
+    error: "Erro ao salvar",
+  }[status];
+}
+
+async function copyToClipboard(value: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.append(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    return copied;
+  }
 }

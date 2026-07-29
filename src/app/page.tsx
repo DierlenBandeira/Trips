@@ -2,42 +2,78 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowRight, LoaderCircle, Sparkles } from "lucide-react";
+import { demoTrip } from "@/features/trips/demo-data";
+import { apiRequest, jsonRequest } from "@/lib/api/client";
+
+type CreatedTrip = { id: string };
 
 export default function Home() {
   const router = useRouter();
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<
+    "trip" | "demo" | null
+  >(null);
 
   async function createTrip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPending(true);
+    setPendingAction("trip");
     setError("");
     const form = new FormData(event.currentTarget);
-    const name = String(form.get("name") || "");
-    const slug = String(form.get("slug") || "");
 
     try {
-      const response = await fetch("/api/trips", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name,
-          slug,
+      const trip = await apiRequest<CreatedTrip>(
+        "/api/trips",
+        jsonRequest("POST", {
+          name: form.get("name"),
+          slug: form.get("slug"),
           currency: form.get("currency"),
           travelersCount: Number(form.get("travelersCount")),
         }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error?.message || "Não foi possível criar.");
-      router.push(`/trips/${result.data.id}`);
+      );
+      router.push(`/trips/${trip.id}`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível criar.");
-      setPending(false);
+      setError(
+        cause instanceof Error ? cause.message : "Não foi possível criar.",
+      );
+      setPendingAction(null);
     }
   }
 
+  async function createDemoTrip() {
+    setPendingAction("demo");
+    setError("");
+    try {
+      const trip = await apiRequest<CreatedTrip>(
+        "/api/trips",
+        jsonRequest("POST", {
+          name: demoTrip.name,
+          slug: `europa-demo-${Date.now().toString(36)}`,
+          currency: demoTrip.currency,
+          travelersCount: demoTrip.travelersCount,
+        }),
+      );
+      for (const [position, stop] of demoTrip.stops.entries()) {
+        await apiRequest(
+          `/api/trips/${trip.id}/stops`,
+          jsonRequest("POST", { ...stop, position }),
+        );
+      }
+      router.push(`/trips/${trip.id}`);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível criar a demonstração.",
+      );
+      setPendingAction(null);
+    }
+  }
+
+  const pending = pendingAction !== null;
+
   return (
-    <main>
+    <main id="main-content">
       <section className="hero">
         <p className="eyebrow">TRIP PLANNER</p>
         <h1>Uma viagem clara começa com um roteiro simples.</h1>
@@ -54,7 +90,12 @@ export default function Home() {
         </div>
         <label>
           Nome da viagem
-          <input name="name" required maxLength={200} placeholder="Itália no verão" />
+          <input
+            name="name"
+            required
+            maxLength={200}
+            placeholder="Itália no verão"
+          />
         </label>
         <label>
           Identificador
@@ -69,16 +110,54 @@ export default function Home() {
           <label>
             Moeda
             <select name="currency" defaultValue="EUR">
-              <option>EUR</option><option>BRL</option><option>USD</option><option>GBP</option>
+              <option>EUR</option>
+              <option>BRL</option>
+              <option>USD</option>
+              <option>GBP</option>
             </select>
           </label>
           <label>
             Viajantes
-            <input name="travelersCount" type="number" min="1" defaultValue="1" required />
+            <input
+              name="travelersCount"
+              type="number"
+              min="1"
+              defaultValue="1"
+              required
+            />
           </label>
         </div>
-        {error && <p className="error" role="alert">{error}</p>}
-        <button disabled={pending}>{pending ? "Criando…" : "Criar viagem"}</button>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="create-actions">
+          <button disabled={pending}>
+            {pendingAction === "trip" ? (
+              <LoaderCircle className="spin" size={17} />
+            ) : (
+              <ArrowRight size={17} />
+            )}
+            Criar viagem
+          </button>
+          <button
+            type="button"
+            className="demo-button"
+            disabled={pending}
+            onClick={createDemoTrip}
+          >
+            {pendingAction === "demo" ? (
+              <LoaderCircle className="spin" size={17} />
+            ) : (
+              <Sparkles size={17} />
+            )}
+            Explorar demonstração
+          </button>
+        </div>
+        <p className="form-status sr-only" aria-live="polite">
+          {pending ? "Criando viagem, aguarde." : ""}
+        </p>
       </form>
     </main>
   );

@@ -1,0 +1,7 @@
+.git
+.next
+coverage
+playwright-report
+test-results
+supabase/.temp
+*.log

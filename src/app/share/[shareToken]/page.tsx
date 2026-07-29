@@ -5,5 +5,5 @@ export default async function SharePage({
 }: {
   params: Promise<{ shareToken: string }>;
 }) {
-  return <PublicTrip shareToken={(await params).shareToken} />;
+  return <PublicTrip mode="legacy" shareToken={(await params).shareToken} />;
 }

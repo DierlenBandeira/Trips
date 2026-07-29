@@ -1,13 +1,9 @@
 import { z } from "zod";
 import { applyRateLimit } from "@/lib/api/rate-limit";
 import { fail, handleApiError, ok } from "@/lib/api/response";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getPublicTripByToken } from "@/lib/api/public-trip";
 
 const tokenSchema = z.string().min(32).max(100);
-const publicTripFields =
-  "id,name,slug,currency,travelers_count,visibility,created_at,updated_at";
-const publicStopFields =
-  "id,position,place_name,country,region,formatted_address,latitude,longitude,nightly_cost,nights,notes";
 type Context = { params: Promise<{ shareToken: string }> };
 
 export async function GET(request: Request, context: Context) {
@@ -16,25 +12,9 @@ export async function GET(request: Request, context: Context) {
 
   try {
     const shareToken = tokenSchema.parse((await context.params).shareToken);
-    const admin = createAdminClient();
-    const { data: trip, error } = await admin
-      .from("trips")
-      .select(publicTripFields)
-      .eq("share_token", shareToken)
-      .in("visibility", ["unlisted", "public"])
-      .maybeSingle();
-
-    if (error) throw new Error("Database query failed");
+    const trip = await getPublicTripByToken(shareToken);
     if (!trip) return fail("NOT_FOUND", "Viagem não encontrada.", 404);
-
-    const { data: stops, error: stopsError } = await admin
-      .from("trip_stops")
-      .select(publicStopFields)
-      .eq("trip_id", trip.id)
-      .order("position");
-    if (stopsError) throw new Error("Database query failed");
-
-    return ok({ ...trip, stops });
+    return ok(trip);
   } catch (error) {
     return handleApiError(error);
   }
