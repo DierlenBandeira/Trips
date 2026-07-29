@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/api/client";
 
 const searchCache = new Map<string, GeocodingResult[]>();
 
-export function useGeocoding(query: string, delayMs = 450) {
+export function useGeocoding(tripId: string, query: string, delayMs = 450) {
   const normalizedQuery = query.trim();
   const [state, setState] = useState<{
     query: string;
@@ -38,7 +38,7 @@ export function useGeocoding(query: string, delayMs = 450) {
         error: "",
       }));
       apiRequest<GeocodingResult[]>(
-        `/api/geocoding/search?q=${encodeURIComponent(normalizedQuery)}`,
+        `/api/geocoding/search?tripId=${encodeURIComponent(tripId)}&q=${encodeURIComponent(normalizedQuery)}`,
         { signal: controller.signal },
       )
         .then((results) => {
@@ -68,7 +68,7 @@ export function useGeocoding(query: string, delayMs = 450) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [delayMs, normalizedQuery]);
+  }, [delayMs, normalizedQuery, tripId]);
 
   if (normalizedQuery.length < 2) {
     return { results: [], loading: false, error: "" };

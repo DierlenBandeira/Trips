@@ -3,11 +3,15 @@ import type {
   GeocodingProvider,
   GeocodingResult,
 } from "@/features/geocoding/types";
+import { withTimeoutSignal } from "@/lib/api/fetch-signal";
 
 const photonFeatureSchema = z.object({
   geometry: z.object({
     type: z.literal("Point"),
-    coordinates: z.tuple([z.number(), z.number()]),
+    coordinates: z.tuple([
+      z.number().min(-180).max(180),
+      z.number().min(-90).max(90),
+    ]),
   }),
   properties: z.object({
     name: z.string().optional(),
@@ -26,7 +30,7 @@ const photonFeatureSchema = z.object({
 });
 
 const photonResponseSchema = z.object({
-  features: z.array(photonFeatureSchema),
+  features: z.array(photonFeatureSchema).max(20),
 });
 
 export class PhotonGeocodingProvider implements GeocodingProvider {
@@ -57,7 +61,8 @@ export class PhotonGeocodingProvider implements GeocodingProvider {
 
   private async request(url: URL, signal?: AbortSignal) {
     const response = await this.fetcher(url, {
-      signal,
+      signal: withTimeoutSignal(signal, 8_000),
+      cache: "no-store",
       headers: {
         accept: "application/geo+json, application/json",
         "user-agent": "TripsPlanner/1.0 (server-side geocoding)",

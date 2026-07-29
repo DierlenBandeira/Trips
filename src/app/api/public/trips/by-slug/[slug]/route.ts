@@ -18,9 +18,11 @@ export async function GET(request: Request, context: Context) {
 
   try {
     const slug = slugSchema.parse((await context.params).slug);
-    const token = tokenSchema.parse(
-      new URL(request.url).searchParams.get("share") || undefined,
-    );
+    const authorization = request.headers.get("authorization");
+    const bearerToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice(7)
+      : undefined;
+    const token = tokenSchema.parse(bearerToken);
     const trip = await getPublicTripBySlug(slug, token);
     return trip
       ? ok(trip)

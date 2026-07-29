@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { updateStopSchema } from "@/lib/api/schemas";
 import { applyRateLimit } from "@/lib/api/rate-limit";
+import { assertSameOrigin, readJsonBody } from "@/lib/api/request";
 import { fail, handleApiError, ok } from "@/lib/api/response";
 import { requireTripEditor, stopFields } from "@/lib/api/trips";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -20,7 +21,7 @@ export async function PATCH(request: Request, context: Context) {
     if (!(await requireTripEditor(tripId))) {
       return fail("UNAUTHORIZED", "Acesso de edição inválido.", 401);
     }
-    const input = updateStopSchema.parse(await request.json());
+    const input = updateStopSchema.parse(await readJsonBody(request));
     const updates: Database["public"]["Tables"]["trip_stops"]["Update"] = {};
     if (input.placeName !== undefined) updates.place_name = input.placeName;
     if (input.country !== undefined) updates.country = input.country;
@@ -51,6 +52,7 @@ export async function DELETE(request: Request, context: Context) {
   if (limited) return limited;
 
   try {
+    assertSameOrigin(request);
     const params = await context.params;
     const tripId = idSchema.parse(params.tripId);
     const stopId = idSchema.parse(params.stopId);

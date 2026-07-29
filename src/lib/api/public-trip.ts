@@ -8,10 +8,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const internalTripFields =
   "id,name,slug,currency,travelers_count,visibility,share_token";
 const publicStopFields =
-  "id,position,place_name,country,region,formatted_address,latitude,longitude,nightly_cost,nights,notes";
+  "position,place_name,country,region,formatted_address,latitude,longitude,nightly_cost,nights,notes";
 const routeGeometrySchema = z.object({
   type: z.literal("LineString"),
-  coordinates: z.array(z.array(z.number()).length(2)),
+  coordinates: z
+    .array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]))
+    .max(200_000),
 });
 
 export async function getPublicTripBySlug(
@@ -104,7 +106,10 @@ async function loadPublicPayload(trip: {
     currency: trip.currency,
     travelers_count: trip.travelers_count,
     visibility: trip.visibility,
-    stops,
+    stops: stops.map((stop) => ({
+      ...stop,
+      id: `stop-${stop.position + 1}`,
+    })),
     route,
   };
 }

@@ -39,6 +39,7 @@ type AddStopForm = {
 };
 
 type DestinationPanelProps = {
+  tripId: string;
   stops: TripStop[];
   currency: string;
   selectedStopId: string | null;
@@ -52,6 +53,7 @@ type DestinationPanelProps = {
 };
 
 export function DestinationPanel({
+  tripId,
   stops,
   currency,
   selectedStopId,
@@ -75,7 +77,7 @@ export function DestinationPanel({
     defaultValues: { country: "", latitude: 0, longitude: 0 },
   });
   const searchQuery = useWatch({ control, name: "placeName" }) || "";
-  const geocoding = useGeocoding(searchQuery);
+  const geocoding = useGeocoding(tripId, searchQuery);
 
   async function submit(values: AddStopForm) {
     await onAdd(values);
@@ -210,10 +212,15 @@ export function DestinationPanel({
         </details>
         <button
           className="add-destination"
-          disabled={busy || formState.isSubmitting}
+          disabled={busy || formState.isSubmitting || stops.length >= 50}
         >
           <Plus size={17} /> Adicionar destino
         </button>
+        {stops.length >= 50 && (
+          <p className="form-error" role="status">
+            O limite de 50 destinos foi atingido.
+          </p>
+        )}
         {Object.keys(formState.errors).length > 0 && (
           <p className="form-error" role="alert">
             Selecione uma sugestão ou informe coordenadas válidas.

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createTripSchema } from "@/lib/api/schemas";
 import { applyRateLimit } from "@/lib/api/rate-limit";
+import { readJsonBody } from "@/lib/api/request";
 import { fail, handleApiError, ok } from "@/lib/api/response";
 import {
   EDIT_COOKIE_MAX_AGE,
@@ -12,11 +13,11 @@ import { tripFields } from "@/lib/api/trips";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
-  const limited = applyRateLimit(request, "create-trip", 10);
+  const limited = applyRateLimit(request, "create-trip", 5, 60 * 60 * 1000);
   if (limited) return limited;
 
   try {
-    const input = createTripSchema.parse(await request.json());
+    const input = createTripSchema.parse(await readJsonBody(request));
     const editToken = generateToken();
     const shareToken = input.visibility === "private" ? null : generateToken();
 

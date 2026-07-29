@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { fail } from "@/lib/api/response";
 
 type Bucket = { count: number; resetAt: number };
@@ -9,9 +10,12 @@ export function applyRateLimit(
   limit = 60,
   windowMs = 60_000,
 ) {
-  const forwarded = request.headers.get("x-forwarded-for");
+  const forwarded =
+    request.headers.get("x-vercel-forwarded-for") ||
+    request.headers.get("x-forwarded-for");
   const ip = forwarded?.split(",")[0]?.trim() || "unknown";
-  const key = `${scope}:${ip}`;
+  const ipHash = createHash("sha256").update(ip).digest("base64url");
+  const key = `${scope}:${ipHash}`;
   const now = Date.now();
   const current = buckets.get(key);
 
@@ -30,9 +34,14 @@ export function applyRateLimit(
 
   current.count += 1;
 
-  if (buckets.size > 10_000) {
+  if (buckets.size >= 10_000) {
     for (const [bucketKey, bucket] of buckets) {
       if (bucket.resetAt <= now) buckets.delete(bucketKey);
+    }
+    while (buckets.size >= 10_000) {
+      const oldestKey = buckets.keys().next().value;
+      if (!oldestKey) break;
+      buckets.delete(oldestKey);
     }
   }
 

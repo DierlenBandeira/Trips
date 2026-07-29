@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { reorderStopsSchema } from "@/lib/api/schemas";
 import { applyRateLimit } from "@/lib/api/rate-limit";
+import { readJsonBody } from "@/lib/api/request";
 import { fail, handleApiError, ok } from "@/lib/api/response";
 import { requireTripEditor, stopFields } from "@/lib/api/trips";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -17,7 +18,7 @@ export async function PUT(request: Request, context: Context) {
     if (!(await requireTripEditor(tripId))) {
       return fail("UNAUTHORIZED", "Acesso de edição inválido.", 401);
     }
-    const { stopIds } = reorderStopsSchema.parse(await request.json());
+    const { stopIds } = reorderStopsSchema.parse(await readJsonBody(request));
     const admin = createAdminClient();
     const { error } = await admin.rpc("reorder_trip_stops", {
       p_trip_id: tripId,

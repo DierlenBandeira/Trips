@@ -19,16 +19,25 @@ const nextConfig: NextConfig = {
               "frame-ancestors 'none'",
               "object-src 'none'",
               `script-src 'self' 'unsafe-inline'${developmentScriptPolicy}`,
+              "script-src-attr 'none'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob: https://tile.openstreetmap.org",
               "connect-src 'self' https://tile.openstreetmap.org",
               "font-src 'self' data:",
+              "frame-src 'none'",
+              "manifest-src 'self'",
+              "media-src 'none'",
               "worker-src 'self' blob:",
             ].join("; "),
           },
           { key: "Referrer-Policy", value: "strict-origin" },
           { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-DNS-Prefetch-Control", value: "off" },
           { key: "X-Frame-Options", value: "DENY" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000",
+          },
           {
             key: "Permissions-Policy",
             value:
@@ -36,6 +45,10 @@ const nextConfig: NextConfig = {
           },
           {
             key: "Cross-Origin-Opener-Policy",
+            value: "same-origin",
+          },
+          {
+            key: "Cross-Origin-Resource-Policy",
             value: "same-origin",
           },
         ],

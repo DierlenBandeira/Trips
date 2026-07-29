@@ -6,6 +6,7 @@ import {
 } from "@/features/routing/route-utils";
 import type { RouteResult } from "@/features/routing/types";
 import { applyRateLimit } from "@/lib/api/rate-limit";
+import { readJsonBody } from "@/lib/api/request";
 import { fail, handleApiError, ok } from "@/lib/api/response";
 import { requireTripEditor } from "@/lib/api/trips";
 import { TtlCache } from "@/lib/cache/ttl-cache";
@@ -26,7 +27,9 @@ const routeSchema = z.object({
 });
 const routeGeometrySchema = z.object({
   type: z.literal("LineString"),
-  coordinates: z.array(z.array(z.number()).length(2)),
+  coordinates: z
+    .array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]))
+    .max(200_000),
 });
 const cache = new TtlCache<RouteResult>(1000 * 60 * 60 * 6, 500);
 
@@ -35,7 +38,7 @@ export async function POST(request: Request) {
   if (limited) return limited;
 
   try {
-    const { tripId, stops } = routeSchema.parse(await request.json());
+    const { tripId, stops } = routeSchema.parse(await readJsonBody(request));
     if (!(await requireTripEditor(tripId))) {
       return fail("UNAUTHORIZED", "Acesso de edição inválido.", 401);
     }

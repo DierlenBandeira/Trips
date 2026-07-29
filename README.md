@@ -44,16 +44,16 @@ Copie `.env.example` para `.env.local` e preencha as variáveis pelo painel
 Connect/API Keys do Supabase:
 
 ```dotenv
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=
-NEXT_PUBLIC_APP_URL=http://localhost:3000
 GEOCODING_BASE_URL=https://photon.komoot.io
 ROUTING_BASE_URL=https://router.project-osrm.org
 ```
 
-Nunca versione `.env.local` ou chaves privadas.
+Somente `SUPABASE_URL` e `SUPABASE_SECRET_KEY` são obrigatórias; os provedores
+possuem os valores padrão exibidos acima. O navegador não inicializa um cliente
+Supabase e não precisa de chave pública. Nunca versione `.env.local` ou chaves
+privadas.
 
 ## Supabase
 
@@ -89,7 +89,9 @@ alterações pendentes, salvamento, sucesso ou erro. O botão Salvar força o fl
 de todas as alterações pendentes.
 
 O botão Compartilhar cria uma viagem não listada e copia uma URL no formato
-`/trip/[slug]?share=[token-publico]`. Esse token concede somente leitura. Uma
+`/trip/[slug]#share=[token-publico]`. O fragmento não é enviado ao servidor na
+navegação, nos logs HTTP ou no cabeçalho Referer; o navegador o encaminha à API
+em um header de autorização. Esse token concede somente leitura. Uma
 viagem com visibilidade `public` pode ser aberta em `/trip/[slug]` sem token.
 
 ## Qualidade
@@ -98,6 +100,7 @@ viagem com visibilidade `public` pode ser aberta em `/trip/[slug]` sem token.
 npm run lint
 npm run test
 npm run test:e2e
+npm audit
 npm run audit:prod
 npm run build
 ```
@@ -110,10 +113,9 @@ rota pública e auditoria axe em desktop e mobile.
 ## Preview na Vercel
 
 Use a raiz do repositório, o preset Next.js, `npm ci` para instalação e
-`npm run build` para build. Cadastre as sete variáveis de `.env.example` e
-ajuste `NEXT_PUBLIC_APP_URL` para a URL do Preview. As quatro variáveis do
-Supabase são obrigatórias. Nunca use o prefixo `NEXT_PUBLIC_` na chave
-administrativa.
+`npm run build` para build. Cadastre as quatro variáveis de `.env.example`;
+somente as duas variáveis do Supabase são obrigatórias. Nunca use o prefixo
+`NEXT_PUBLIC_` na chave administrativa.
 
 Antes de publicar:
 
@@ -140,35 +142,31 @@ Depois do deploy:
 - `POST /api/trips/:tripId/stops`
 - `PATCH|DELETE /api/trips/:tripId/stops/:stopId`
 - `PUT /api/trips/:tripId/stops/reorder`
-- `GET /api/public/trips/:shareToken`
 - `GET /api/public/trips/by-slug/:slug`
-- `GET /api/geocoding/search?q=:query`
-- `GET /api/geocoding/reverse?lat=:latitude&lon=:longitude`
+- `GET /api/geocoding/search?tripId=:tripId&q=:query`
+- `GET /api/geocoding/reverse?tripId=:tripId&lat=:latitude&lon=:longitude`
 - `POST /api/routing`
 - `GET /api/health`
 
 As rotas privadas exigem o cookie de edição. A rota pública retorna apenas os
 campos permitidos e nunca concede escrita.
 
-Links legados em `/share/[shareToken]` permanecem disponíveis, mas novos links
-usam `/trip/[slug]`.
-
 ## Segurança
 
-- acesso ao Supabase ocorre somente no servidor e o RLS permanece habilitado;
+- acesso ao Supabase ocorre somente no servidor, com RLS forçado e privilégios
+  públicos/default revogados;
 - o token de edição é armazenado como hash e enviado em cookie HttpOnly;
-- payloads são validados com Zod e as APIs possuem rate limiting;
+- mutações exigem JSON, têm limite de tamanho e rejeitam origens cruzadas;
+- payloads são validados com Zod e as APIs possuem rate limiting por IP;
+- busca e roteamento exigem uma sessão válida de edição;
+- slug e limite de 50 paradas também são garantidos pelo banco;
+- o token de leitura fica no fragmento da URL e é comparado em tempo constante;
 - a resposta pública exclui credenciais, hashes e metadados internos;
 - CSP e headers defensivos bloqueiam framing, MIME sniffing e permissões
   desnecessárias;
 - o bundle cliente não contém a chave administrativa;
-- `npm run audit:prod` passa com zero vulnerabilidades conhecidas.
-
-O audit completo ainda aponta nove alertas altos na cadeia de desenvolvimento
-do ESLint (`minimatch`/`brace-expansion`). Essas dependências processam somente
-globs locais durante o lint e não integram o runtime. A correção forçada foi
-descartada porque quebra o ESLint; aguarde uma atualização compatível do
-`eslint-config-next` e não execute `npm audit fix --force`.
+- `npm audit` e `npm run audit:prod` passam com zero vulnerabilidades
+  conhecidas.
 
 ## Limitações atuais
 
@@ -181,3 +179,9 @@ descartada porque quebra o ESLint; aguarde uma atualização compatível do
 - rate limiting em memória não é compartilhado entre instâncias serverless;
 - o cache de rota no Supabase cresce por combinação de coordenadas/ordem e
   ainda não possui rotina automática de expiração.
+
+Antes de liberar tráfego público, habilite no GitHub **Secret scanning** e
+**Push protection** e configure regras de rate limiting/bot protection no
+firewall da Vercel para `POST /api/trips` e para as APIs de geocodificação.
+O limitador da aplicação é uma segunda camada, não substitui um controle
+distribuído na borda.

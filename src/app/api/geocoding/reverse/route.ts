@@ -2,11 +2,13 @@ import { z } from "zod";
 import { PhotonGeocodingProvider } from "@/features/geocoding/photon-provider";
 import type { GeocodingResult } from "@/features/geocoding/types";
 import { applyRateLimit } from "@/lib/api/rate-limit";
-import { handleApiError, ok } from "@/lib/api/response";
+import { fail, handleApiError, ok } from "@/lib/api/response";
+import { requireTripEditor } from "@/lib/api/trips";
 import { TtlCache } from "@/lib/cache/ttl-cache";
 import { getServerEnv } from "@/lib/env/server";
 
 const coordinatesSchema = z.object({
+  tripId: z.uuid(),
   latitude: z.coerce.number().min(-90).max(90),
   longitude: z.coerce.number().min(-180).max(180),
 });
@@ -22,9 +24,13 @@ export async function GET(request: Request) {
   try {
     const searchParams = new URL(request.url).searchParams;
     const coordinates = coordinatesSchema.parse({
+      tripId: searchParams.get("tripId"),
       latitude: searchParams.get("lat"),
       longitude: searchParams.get("lon"),
     });
+    if (!(await requireTripEditor(coordinates.tripId))) {
+      return fail("UNAUTHORIZED", "Acesso de edição inválido.", 401);
+    }
     const cacheKey = `${coordinates.latitude.toFixed(5)},${coordinates.longitude.toFixed(5)}`;
     const cached = cache.get(cacheKey);
     if (cached !== undefined) return ok(cached);

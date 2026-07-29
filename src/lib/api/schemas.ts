@@ -17,7 +17,7 @@ export const updateTripSchema = createTripSchema
   .refine((value) => Object.keys(value).length > 0);
 
 export const createStopSchema = z.object({
-  position: z.int().nonnegative(),
+  position: z.int().min(0).max(49),
   placeName: z.string().trim().min(1).max(200),
   country: nullableText,
   region: nullableText,
@@ -35,7 +35,7 @@ export const updateStopSchema = createStopSchema
   .refine((value) => Object.keys(value).length > 0);
 
 export const reorderStopsSchema = z.object({
-  stopIds: z.array(z.uuid()).min(1).max(500).refine(
+  stopIds: z.array(z.uuid()).min(1).max(50).refine(
     (ids) => new Set(ids).size === ids.length,
     "IDs duplicados não são permitidos.",
   ),

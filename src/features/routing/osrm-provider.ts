@@ -4,6 +4,7 @@ import type {
   RouteProvider,
 } from "@/features/routing/types";
 import { splitRouteStops } from "@/features/routing/route-utils";
+import { withTimeoutSignal } from "@/lib/api/fetch-signal";
 
 const osrmResponseSchema = z.object({
   code: z.literal("Ok"),
@@ -13,7 +14,14 @@ const osrmResponseSchema = z.object({
         distance: z.number().nonnegative(),
         geometry: z.object({
           type: z.literal("LineString"),
-          coordinates: z.array(z.tuple([z.number(), z.number()])),
+          coordinates: z
+            .array(
+              z.tuple([
+                z.number().min(-180).max(180),
+                z.number().min(-90).max(90),
+              ]),
+            )
+            .max(200_000),
         }),
       }),
     )
@@ -68,7 +76,8 @@ export class OsrmRouteProvider implements RouteProvider {
     url.searchParams.set("steps", "false");
 
     const response = await this.fetcher(url, {
-      signal,
+      signal: withTimeoutSignal(signal, 12_000),
+      cache: "no-store",
       headers: { accept: "application/json" },
     });
     if (!response.ok) throw new Error("Routing provider failed");

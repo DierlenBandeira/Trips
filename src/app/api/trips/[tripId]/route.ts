@@ -2,6 +2,7 @@ import { z } from "zod";
 import { cookies } from "next/headers";
 import { updateTripSchema } from "@/lib/api/schemas";
 import { applyRateLimit } from "@/lib/api/rate-limit";
+import { assertSameOrigin, readJsonBody } from "@/lib/api/request";
 import { fail, handleApiError, ok } from "@/lib/api/response";
 import { editCookieName, generateToken } from "@/lib/api/tokens";
 import {
@@ -40,7 +41,7 @@ export async function PATCH(request: Request, context: Context) {
     if (!(await requireTripEditor(tripId))) {
       return fail("UNAUTHORIZED", "Acesso de edição inválido.", 401);
     }
-    const input = updateTripSchema.parse(await request.json());
+    const input = updateTripSchema.parse(await readJsonBody(request));
     const admin = createAdminClient();
     const updates: Database["public"]["Tables"]["trips"]["Update"] = {};
     if (input.name !== undefined) updates.name = input.name;
@@ -84,6 +85,7 @@ export async function DELETE(request: Request, context: Context) {
   if (limited) return limited;
 
   try {
+    assertSameOrigin(request);
     const tripId = idSchema.parse((await context.params).tripId);
     if (!(await requireTripEditor(tripId))) {
       return fail("UNAUTHORIZED", "Acesso de edição inválido.", 401);

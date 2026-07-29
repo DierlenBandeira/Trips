@@ -54,7 +54,15 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
     await mockApi(route, trip, stops);
   });
 
-  await page.goto("/");
+  const homeResponse = await page.goto("/");
+  expect(homeResponse?.headers()["content-security-policy"]).toContain(
+    "frame-ancestors 'none'",
+  );
+  expect(homeResponse?.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(homeResponse?.headers()["x-frame-options"]).toBe("DENY");
+  expect(homeResponse?.headers()["strict-transport-security"]).toBe(
+    "max-age=31536000",
+  );
   await expect(page.getByRole("heading", { level: 1 })).toContainText(
     "Uma viagem clara",
   );
@@ -102,8 +110,9 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
     .getByLabel("Link público da viagem")
     .inputValue();
   expect(publicUrl).toContain(
-    `/trip/${trip.slug}?share=${encodeURIComponent(shareToken)}`,
+    `/trip/${trip.slug}#share=${encodeURIComponent(shareToken)}`,
   );
+  expect(publicUrl).not.toContain("?share=");
 
   await page.goto(publicUrl);
   await expect(page.getByText("Somente leitura")).toBeVisible();
@@ -242,6 +251,9 @@ async function mockApi(
     });
   }
   if (path === `/api/public/trips/by-slug/${trip.slug}`) {
+    if (request.headers().authorization !== `Bearer ${shareToken}`) {
+      return fulfillError(route, 404);
+    }
     return fulfill(route, {
       name: trip.name,
       slug: trip.slug,

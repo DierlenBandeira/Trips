@@ -40,26 +40,25 @@ type PublicTripData = {
   route: RouteResult | null;
 };
 
-type PublicTripProps =
-  | { mode: "slug"; slug: string; shareToken?: string }
-  | { mode: "legacy"; shareToken: string };
-
-export function PublicTrip(props: PublicTripProps) {
+export function PublicTrip({ slug }: { slug: string }) {
   const [data, setData] = useState<PublicTripData | null>(null);
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const endpoint =
-    props.mode === "legacy"
-      ? `/api/public/trips/${encodeURIComponent(props.shareToken)}`
-      : `/api/public/trips/by-slug/${encodeURIComponent(props.slug)}${
-          props.shareToken
-            ? `?share=${encodeURIComponent(props.shareToken)}`
-            : ""
-        }`;
+  const [shareToken] = useState(() => {
+    if (typeof window === "undefined") return null;
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    return fragment.get("share");
+  });
+  const endpoint = `/api/public/trips/by-slug/${encodeURIComponent(slug)}`;
 
   useEffect(() => {
     let active = true;
-    apiRequest<PublicTripData>(endpoint)
+    apiRequest<PublicTripData>(endpoint, {
+      headers: shareToken
+        ? { authorization: `Bearer ${shareToken}` }
+        : undefined,
+      cache: "no-store",
+    })
       .then((trip) => {
         if (!active) return;
         setData(trip);
@@ -75,7 +74,7 @@ export function PublicTrip(props: PublicTripProps) {
     return () => {
       active = false;
     };
-  }, [endpoint]);
+  }, [endpoint, shareToken]);
 
   if (error) {
     return (

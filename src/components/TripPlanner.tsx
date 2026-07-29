@@ -159,7 +159,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
       let result: GeocodingResult | null = null;
       try {
         result = await apiRequest<GeocodingResult | null>(
-          `/api/geocoding/reverse?lat=${coordinates.latitude}&lon=${coordinates.longitude}`,
+          `/api/geocoding/reverse?tripId=${encodeURIComponent(trip.id)}&lat=${coordinates.latitude}&lon=${coordinates.longitude}`,
         );
       } catch {
         // Reverse geocoding is an enhancement; coordinates remain usable.
@@ -180,7 +180,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
         setBusy(false);
       }
     },
-    [addStop, trip.stops.length],
+    [addStop, trip.id, trip.stops.length],
   );
 
   const beginSave = useCallback(() => {
@@ -430,7 +430,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
       if (updated.share_token) {
         const url = `${window.location.origin}/trip/${encodeURIComponent(
           updated.slug,
-        )}?share=${encodeURIComponent(updated.share_token)}`;
+        )}#share=${encodeURIComponent(updated.share_token)}`;
         setShareUrl(url);
         const copied = await copyToClipboard(url);
         setShareFeedback(
@@ -538,6 +538,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
 
       <div className={`workspace-body${panelOpen ? " panel-open" : ""}`}>
         <DestinationPanel
+          tripId={trip.id}
           stops={trip.stops}
           currency={trip.currency}
           selectedStopId={state.selectedStopId}
