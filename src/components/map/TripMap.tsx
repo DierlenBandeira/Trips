@@ -49,6 +49,9 @@ type TripMapProps = {
   route?: RouteResult | null;
   routeLoading?: boolean;
   readOnly?: boolean;
+  hint?: string | false;
+  emptyState?: { title: string; description: string } | false;
+  ariaLabel?: string;
 };
 
 export function TripMap({
@@ -60,6 +63,12 @@ export function TripMap({
   route = null,
   routeLoading = false,
   readOnly = false,
+  hint = "Clique no mapa para adicionar um ponto",
+  emptyState = {
+    title: "Monte sua rota",
+    description: "Adicione ao menos dois destinos para ligar os pontos.",
+  },
+  ariaLabel = "Mapa da viagem",
 }: TripMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -194,10 +203,10 @@ export function TripMap({
         ref={containerRef}
         className="trip-map"
         role="region"
-        aria-label="Mapa da viagem"
+        aria-label={ariaLabel}
       />
-      {!readOnly && (
-        <div className="map-hint">Clique no mapa para adicionar um ponto</div>
+      {!readOnly && hint && (
+        <div className="map-hint">{hint}</div>
       )}
       {routeLoading && stops.length >= 2 && (
         <div className="route-status is-loading" role="status">
@@ -216,10 +225,10 @@ export function TripMap({
           })} km
         </div>
       )}
-      {stops.length < 2 && (
+      {stops.length < 2 && emptyState && (
         <div className="map-empty">
-          <strong>Monte sua rota</strong>
-          <span>Adicione ao menos dois destinos para ligar os pontos.</span>
+          <strong>{emptyState.title}</strong>
+          <span>{emptyState.description}</span>
         </div>
       )}
     </div>

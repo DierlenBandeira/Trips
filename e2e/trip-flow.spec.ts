@@ -63,22 +63,29 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   expect(homeResponse?.headers()["strict-transport-security"]).toBe(
     "max-age=31536000",
   );
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(
-    "Uma viagem clara",
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Para onde você quer ir?",
   );
+  await expect(
+    page.getByRole("region", {
+      name: "Mapa para escolher o primeiro destino",
+    }),
+  ).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
-  await page.getByLabel("Nome da viagem").fill(trip.name);
-  await page.getByLabel("Identificador").fill(trip.slug);
-  await page.getByLabel("Viajantes").fill("2");
-  await page.getByRole("button", { name: "Criar viagem" }).click();
+  const mapCanvas = page.locator(".landing-map-stage canvas");
+  await expect(mapCanvas).toBeVisible();
+  await mapCanvas.click({ position: { x: 900, y: 300 } });
 
   await expect(page).toHaveURL(`/trips/${tripId}`);
   await expect(page.getByLabel("Nome da viagem")).toHaveValue(trip.name);
+  await expect(
+    page.locator(".destination-card").filter({ hasText: "Lisboa" }),
+  ).toBeVisible();
 
   await addDestination(page, "Berlim");
   await addDestination(page, "Budapeste");
-  await expect(page.locator(".destination-card")).toHaveCount(2);
+  await expect(page.locator(".destination-card")).toHaveCount(3);
 
   const berlinCard = page.locator(".destination-card").filter({
     hasText: "Berlim",
@@ -97,7 +104,7 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   await dragHandle.press("ArrowDown");
   await page.waitForTimeout(150);
   await dragHandle.press("Space");
-  await expect(page.locator(".destination-heading strong").first()).toHaveText(
+  await expect(page.locator(".destination-heading strong").nth(1)).toHaveText(
     "Budapeste",
   );
 
@@ -237,6 +244,9 @@ async function mockApi(
       ? [places[query]]
       : [];
     return fulfill(route, result);
+  }
+  if (path === "/api/geocoding/reverse") {
+    return fulfill(route, place("Lisboa", "Portugal", 38.7223, -9.1393));
   }
   if (path === "/api/routing") {
     return fulfill(route, {
