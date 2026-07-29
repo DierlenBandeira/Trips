@@ -85,6 +85,8 @@ export function TripMap({
   ariaLabel = "Mapa da viagem",
 }: TripMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const flightOverlayRef = useRef<SVGSVGElement>(null);
+  const drawFlightOverlayRef = useRef<() => void>(() => undefined);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<MapLibreMarker[]>([]);
   const addPointRef = useRef(onAddPoint);
@@ -142,6 +144,8 @@ export function TripMap({
           );
         };
         map.on("moveend", syncViewportState);
+        map.on("move", () => drawFlightOverlayRef.current());
+        map.on("resize", () => drawFlightOverlayRef.current());
         map.once("load", syncViewportState);
         syncViewportState();
         mapRef.current = map;
@@ -155,6 +159,7 @@ export function TripMap({
       markersRef.current = [];
       mapRef.current?.remove();
       mapRef.current = null;
+      drawFlightOverlayRef.current = () => undefined;
     };
   }, [readOnly]);
 
@@ -213,6 +218,8 @@ export function TripMap({
         source.setData(routeFeature);
       } else if (map.isStyleLoaded()) {
         map.addSource("trip-route", { type: "geojson", data: routeFeature });
+      }
+      if (!map.getLayer("trip-route-line") && map.isStyleLoaded()) {
         map.addLayer({
           id: "trip-route-line",
           type: "line",
@@ -226,36 +233,9 @@ export function TripMap({
         });
       }
 
-      const flightFeature: Feature<MultiLineString> = {
-        type: "Feature" as const,
-        properties: {},
-        geometry: {
-          type: "MultiLineString" as const,
-          coordinates: segments.flights,
-        },
-      };
-      const flightSource =
-        map.getSource<GeoJSONSource>("trip-flight-routes");
-      if (flightSource) {
-        flightSource.setData(flightFeature);
-      } else if (map.isStyleLoaded()) {
-        map.addSource("trip-flight-routes", {
-          type: "geojson",
-          data: flightFeature,
-        });
-        map.addLayer({
-          id: "trip-flight-routes-line",
-          type: "line",
-          source: "trip-flight-routes",
-          paint: {
-            "line-color": "#087ff5",
-            "line-width": 6,
-            "line-opacity": 1,
-            "line-dasharray": [2.2, 1.2],
-          },
-          layout: { "line-cap": "round", "line-join": "round" },
-        });
-      }
+      drawFlightOverlayRef.current = () =>
+        drawFlightOverlay(map, flightOverlayRef.current, segments.flights);
+      drawFlightOverlayRef.current();
 
       if (!initialViewportAppliedRef.current) {
         initialViewportAppliedRef.current = true;
@@ -290,6 +270,11 @@ export function TripMap({
         className="trip-map"
         role="region"
         aria-label={ariaLabel}
+      />
+      <svg
+        ref={flightOverlayRef}
+        className="flight-route-overlay"
+        aria-hidden="true"
       />
       {!readOnly && hint && (
         <div className="map-hint">{hint}</div>
@@ -383,4 +368,37 @@ function escapeHtml(value: string) {
         "'": "&#039;",
       })[character] ?? character,
   );
+}
+
+function drawFlightOverlay(
+  map: MapLibreMap,
+  overlay: SVGSVGElement | null,
+  flights: Array<Array<[number, number]>>,
+) {
+  if (!overlay) return;
+  overlay.replaceChildren();
+  const canvas = map.getCanvas();
+  overlay.setAttribute("viewBox", `0 0 ${canvas.clientWidth} ${canvas.clientHeight}`);
+  overlay.setAttribute(
+    "data-visible-flight-paths",
+    String(flights.length),
+  );
+  const namespace = "http://www.w3.org/2000/svg";
+
+  for (const flight of flights) {
+    const pathData = flight
+      .map(([longitude, latitude], index) => {
+        const point = map.project([longitude, latitude]);
+        return `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+      })
+      .join(" ");
+    const casing = document.createElementNS(namespace, "path");
+    casing.setAttribute("d", pathData);
+    casing.setAttribute("class", "flight-route-casing");
+    overlay.append(casing);
+    const line = document.createElementNS(namespace, "path");
+    line.setAttribute("d", pathData);
+    line.setAttribute("class", "flight-route-line");
+    overlay.append(line);
+  }
 }
