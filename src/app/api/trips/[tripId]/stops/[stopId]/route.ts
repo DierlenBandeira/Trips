@@ -72,16 +72,19 @@ export async function DELETE(request: Request, context: Context) {
 
     const { data: remainingStops, error: readError } = await admin
       .from("trip_stops")
-      .select("id")
+      .select("id,position")
       .eq("trip_id", tripId)
       .order("position");
     if (readError) throw new Error("Database read failed");
-    if (remainingStops.length > 0) {
-      const { error: reorderError } = await admin.rpc("reorder_trip_stops", {
-        p_trip_id: tripId,
-        p_stop_ids: remainingStops.map((stop) => stop.id),
-      });
-      if (reorderError) throw new Error("Database reorder failed");
+
+    for (const [position, stop] of remainingStops.entries()) {
+      if (stop.position === position) continue;
+      const { error: compactError } = await admin
+        .from("trip_stops")
+        .update({ position })
+        .eq("id", stop.id)
+        .eq("trip_id", tripId);
+      if (compactError) throw new Error("Database compact failed");
     }
 
     return ok({ deleted: true });
