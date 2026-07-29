@@ -17,6 +17,7 @@ const photonFeatureSchema = z.object({
     name: z.string().optional(),
     city: z.string().optional(),
     district: z.string().optional(),
+    locality: z.string().optional(),
     county: z.string().optional(),
     state: z.string().optional(),
     country: z.string().optional(),
@@ -43,7 +44,6 @@ export class PhotonGeocodingProvider implements GeocodingProvider {
     const url = new URL("/api", this.baseUrl);
     url.searchParams.set("q", query);
     url.searchParams.set("limit", "6");
-    url.searchParams.set("lang", "pt");
 
     return this.request(url, signal);
   }
@@ -53,13 +53,16 @@ export class PhotonGeocodingProvider implements GeocodingProvider {
     url.searchParams.set("lat", String(latitude));
     url.searchParams.set("lon", String(longitude));
     url.searchParams.set("limit", "1");
-    url.searchParams.set("lang", "pt");
 
-    const results = await this.request(url, signal);
+    const results = await this.request(url, signal, true);
     return results[0] ?? null;
   }
 
-  private async request(url: URL, signal?: AbortSignal) {
+  private async request(
+    url: URL,
+    signal?: AbortSignal,
+    preferCity = false,
+  ) {
     const response = await this.fetcher(url, {
       signal: withTimeoutSignal(signal, 8_000),
       cache: "no-store",
@@ -71,21 +74,31 @@ export class PhotonGeocodingProvider implements GeocodingProvider {
     if (!response.ok) throw new Error("Geocoding provider failed");
 
     const payload = photonResponseSchema.parse(await response.json());
-    return payload.features.map(normalizeFeature);
+    return payload.features.map((feature) =>
+      normalizeFeature(feature, preferCity),
+    );
   }
 }
 
 function normalizeFeature(
   feature: z.infer<typeof photonFeatureSchema>,
+  preferCity = false,
 ): GeocodingResult {
   const properties = feature.properties;
   const [longitude, latitude] = feature.geometry.coordinates;
-  const placeName =
-    properties.name ||
-    properties.city ||
-    properties.district ||
-    properties.county ||
-    "Local selecionado";
+  const placeName = preferCity
+    ? properties.city ||
+      properties.locality ||
+      properties.district ||
+      properties.county ||
+      properties.name ||
+      "Local selecionado"
+    : properties.name ||
+      properties.city ||
+      properties.locality ||
+      properties.district ||
+      properties.county ||
+      "Local selecionado";
   const addressParts = [
     [properties.street, properties.housenumber].filter(Boolean).join(" "),
     properties.city || properties.district,
