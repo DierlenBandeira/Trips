@@ -775,13 +775,96 @@ button.secondary { border: 1px solid var(--ink); color: var(--ink); background: 
   display: grid;
   grid-template-columns: 20px 30px 1fr;
   gap: 8px;
-  margin-bottom: 9px;
+  margin-bottom: 0;
   padding: 14px 12px 14px 7px;
   border: 1px solid var(--workspace-line);
   border-radius: 13px;
   background: #fff;
   box-shadow: 0 3px 10px rgba(25, 42, 34, .035);
   transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.destination-item { position: relative; }
+
+.transport-leg {
+  --transport-color: var(--workspace-accent);
+  position: relative;
+  display: grid;
+  justify-items: center;
+  min-height: 52px;
+  padding: 7px 0;
+}
+.transport-leg.is-flight { --transport-color: #2684ff; }
+.transport-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 34px;
+  width: 2px;
+  background: var(--transport-color);
+  opacity: .45;
+}
+.transport-leg.is-flight .transport-line {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--transport-color) 0 5px,
+    transparent 5px 9px
+  );
+}
+.transport-bubble {
+  position: relative;
+  z-index: 1;
+  width: calc(100% - 68px);
+  margin-left: 42px;
+  padding: 5px;
+  border: 1px solid #dbe2de;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 3px 12px #1e332718;
+}
+.transport-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.transport-options button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 5px 7px;
+  border-radius: 9px;
+  color: var(--workspace-muted);
+  background: transparent;
+  font-size: .64rem;
+  font-weight: 750;
+}
+.transport-options button.is-active {
+  color: #fff;
+  background: var(--transport-color);
+}
+.flight-cost {
+  display: grid;
+  grid-template-columns: auto minmax(70px, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  margin: 5px 2px 1px;
+  color: #466174;
+  font-size: .59rem;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+.flight-cost input {
+  min-width: 0;
+  padding: 6px 7px;
+  border-color: #bdd7f5;
+  border-radius: 7px;
+  font-size: .72rem;
+}
+.flight-cost > span {
+  color: #1464c0;
+  font-size: .67rem;
+  text-transform: none;
 }
 .destination-card.is-selected {
   border-color: #e98974;
@@ -1011,7 +1094,7 @@ button.secondary { border: 1px solid var(--ink); color: var(--ink); background: 
   position: absolute;
   right: 22px;
   bottom: 24px;
-  width: min(420px, calc(100% - 44px));
+  width: min(520px, calc(100% - 44px));
   overflow: hidden;
   border: 1px solid #d6ded9;
   border-radius: 17px;
@@ -1039,7 +1122,7 @@ button.secondary { border: 1px solid var(--ink); color: var(--ink); background: 
 .kpi-primary small { color: var(--workspace-muted); font-size: .66rem; }
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
 }
 .kpi-grid > div {
   display: flex;
@@ -1120,9 +1203,9 @@ button.secondary { border: 1px solid var(--ink); color: var(--ink); background: 
   .coordinate-row label:first-child { grid-column: 1 / -1; }
   .map-kpis { bottom: 84px; }
   .kpi-primary strong { font-size: 1.42rem; }
-  .kpi-grid { grid-template-columns: 1fr 1fr; }
-  .kpi-grid > div:nth-child(2) { border-right: 0; }
-  .kpi-grid > div:nth-child(-n+2) { border-bottom: 1px solid var(--workspace-line); }
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  .kpi-grid > div:nth-child(3) { border-right: 0; }
+  .kpi-grid > div:nth-child(-n+3) { border-bottom: 1px solid var(--workspace-line); }
   .trip-settings { top: 12px; left: 12px; }
   .share-toast {
     top: 76px;
@@ -1281,6 +1364,25 @@ button.secondary { border: 1px solid var(--ink); color: var(--ink); background: 
   font-style: normal;
   line-height: 1.4;
 }
+.public-leg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin: 0 auto 8px;
+  padding: 5px 10px;
+  border: 1px solid #dce3df;
+  border-radius: 999px;
+  color: var(--workspace-muted);
+  background: #fff;
+  font-size: .65rem;
+  font-weight: 750;
+}
+.public-leg.is-flight {
+  border-color: #bdd7f5;
+  color: #1464c0;
+}
+.public-leg strong { margin-left: 3px; }
 .public-map-area {
   position: relative;
   min-width: 0;

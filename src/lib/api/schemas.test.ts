@@ -5,6 +5,7 @@ import {
   reorderStopsSchema,
   updateStopSchema,
   updateTripSchema,
+  upsertTripLegSchema,
 } from "./schemas";
 
 describe("API schemas", () => {
@@ -46,5 +47,26 @@ describe("API schemas", () => {
     expect(updateTripSchema.parse({ name: "Munique" })).toEqual({
       name: "Munique",
     });
+  });
+
+  it("validates transport mode, cost and distinct stops", () => {
+    const fromStopId = "c7eb3517-017d-4f0e-9f29-2b4994fd6d15";
+    const toStopId = "74ce2eb1-b5ee-4415-8e62-99d24fa9df83";
+    expect(
+      upsertTripLegSchema.parse({
+        fromStopId,
+        toStopId,
+        transportMode: "flight",
+        transportCost: 350,
+      }),
+    ).toMatchObject({ transportMode: "flight", transportCost: 350 });
+    expect(() =>
+      upsertTripLegSchema.parse({
+        fromStopId,
+        toStopId: fromStopId,
+        transportMode: "flight",
+        transportCost: -1,
+      }),
+    ).toThrow();
   });
 });

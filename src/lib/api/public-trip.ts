@@ -9,6 +9,8 @@ const internalTripFields =
   "id,name,slug,currency,travelers_count,visibility,share_token";
 const publicStopFields =
   "position,place_name,country,region,formatted_address,latitude,longitude,nightly_cost,nights,notes";
+const publicLegFields =
+  "from_stop_id,to_stop_id,transport_mode,transport_cost";
 const routeGeometrySchema = z.object({
   type: z.literal("LineString"),
   coordinates: z
@@ -64,12 +66,19 @@ async function loadPublicPayload(trip: {
   share_token: string | null;
 }) {
   const admin = createAdminClient();
-  const { data: stops, error } = await admin
-    .from("trip_stops")
-    .select(publicStopFields)
-    .eq("trip_id", trip.id)
-    .order("position");
-  if (error) throw new Error("Public stops query failed");
+  const [{ data: stops, error }, { data: legs, error: legsError }] =
+    await Promise.all([
+      admin
+        .from("trip_stops")
+        .select(`id,${publicStopFields}`)
+        .eq("trip_id", trip.id)
+        .order("position"),
+      admin
+        .from("trip_legs")
+        .select(publicLegFields)
+        .eq("trip_id", trip.id),
+    ]);
+  if (error || legsError) throw new Error("Public itinerary query failed");
 
   let route: RouteResult | null = null;
   if (stops.length >= 2) {
@@ -108,7 +117,14 @@ async function loadPublicPayload(trip: {
     visibility: trip.visibility,
     stops: stops.map((stop) => ({
       ...stop,
-      id: `stop-${stop.position + 1}`,
+      id: stop.id,
+    })),
+    legs: legs.map((leg, index) => ({
+      ...leg,
+      id: `leg-${index + 1}`,
+      trip_id: trip.id,
+      created_at: "",
+      updated_at: "",
     })),
     route,
   };

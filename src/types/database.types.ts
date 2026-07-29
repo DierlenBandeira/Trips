@@ -14,6 +14,61 @@ export type Database = {
   }
   public: {
     Tables: {
+      trip_legs: {
+        Row: {
+          created_at: string
+          from_stop_id: string
+          id: string
+          to_stop_id: string
+          transport_cost: number
+          transport_mode: string
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          from_stop_id: string
+          id?: string
+          to_stop_id: string
+          transport_cost?: number
+          transport_mode?: string
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          from_stop_id?: string
+          id?: string
+          to_stop_id?: string
+          transport_cost?: number
+          transport_mode?: string
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_legs_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trip_legs_from_stop_id_fkey"
+            columns: ["from_stop_id"]
+            isOneToOne: false
+            referencedRelation: "trip_stops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trip_legs_to_stop_id_fkey"
+            columns: ["to_stop_id"]
+            isOneToOne: false
+            referencedRelation: "trip_stops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trip_route_cache: {
         Row: {
           created_at: string

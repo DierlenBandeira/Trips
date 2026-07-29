@@ -14,6 +14,7 @@ const nightlyCostSchema = z
   .max(9_999_999_999.99);
 const nightsSchema = z.int().nonnegative().max(3650);
 const notesSchema = z.string().trim().max(5000).nullable().optional();
+const transportCostSchema = z.number().nonnegative().max(9_999_999_999.99);
 
 export const createTripSchema = z.object({
   name: tripNameSchema,
@@ -66,3 +67,14 @@ export const reorderStopsSchema = z.object({
     "IDs duplicados não são permitidos.",
   ),
 });
+
+export const upsertTripLegSchema = z
+  .object({
+    fromStopId: z.uuid(),
+    toStopId: z.uuid(),
+    transportMode: z.enum(["road", "flight"]),
+    transportCost: transportCostSchema.default(0),
+  })
+  .refine((value) => value.fromStopId !== value.toStopId, {
+    message: "O trecho precisa ligar duas paradas diferentes.",
+  });

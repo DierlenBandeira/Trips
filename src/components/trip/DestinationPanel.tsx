@@ -26,8 +26,10 @@ import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import type { GeocodingResult } from "@/features/geocoding/types";
 import type { TripStop } from "@/features/trips/types";
+import type { TripLeg } from "@/features/trips/types";
 import { useGeocoding } from "@/hooks/use-geocoding";
 import { SortableStopCard } from "@/components/trip/SortableStopCard";
+import { TransportLegControl } from "@/components/trip/TransportLegControl";
 
 type AddStopForm = {
   placeName: string;
@@ -41,6 +43,7 @@ type AddStopForm = {
 type DestinationPanelProps = {
   tripId: string;
   stops: TripStop[];
+  legs: TripLeg[];
   currency: string;
   selectedStopId: string | null;
   busy: boolean;
@@ -50,11 +53,17 @@ type DestinationPanelProps = {
   onUpdate: (stopId: string, changes: Partial<TripStop>) => Promise<void>;
   onSelect: (stopId: string) => void;
   onReorder: (stopIds: string[]) => Promise<void>;
+  onUpdateLeg: (
+    fromStopId: string,
+    toStopId: string,
+    changes: Pick<TripLeg, "transport_mode" | "transport_cost">,
+  ) => Promise<void>;
 };
 
 export function DestinationPanel({
   tripId,
   stops,
+  legs,
   currency,
   selectedStopId,
   busy,
@@ -64,6 +73,7 @@ export function DestinationPanel({
   onUpdate,
   onSelect,
   onReorder,
+  onUpdateLeg,
 }: DestinationPanelProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -245,20 +255,43 @@ export function DestinationPanel({
             items={stops.map((stop) => stop.id)}
             strategy={verticalListSortingStrategy}
           >
-            {stops.map((stop, index) => (
-              <SortableStopCard
-                key={stop.id}
-                stop={stop}
-                index={index}
-                currency={currency}
-                selected={stop.id === selectedStopId}
-                disabled={busy}
-                onSelect={() => onSelect(stop.id)}
-                onRemove={() => onRemove(stop.id)}
-                onChange={(changes) => onChange(stop.id, changes)}
-                onUpdate={(changes) => onUpdate(stop.id, changes)}
-              />
-            ))}
+            {stops.map((stop, index) => {
+              const next = stops[index + 1];
+              const leg = next
+                ? legs.find(
+                    (item) =>
+                      item.from_stop_id === stop.id &&
+                      item.to_stop_id === next.id,
+                  )
+                : undefined;
+              return (
+                <div className="destination-item" key={stop.id}>
+                  <SortableStopCard
+                    stop={stop}
+                    index={index}
+                    currency={currency}
+                    selected={stop.id === selectedStopId}
+                    disabled={busy}
+                    onSelect={() => onSelect(stop.id)}
+                    onRemove={() => onRemove(stop.id)}
+                    onChange={(changes) => onChange(stop.id, changes)}
+                    onUpdate={(changes) => onUpdate(stop.id, changes)}
+                  />
+                  {next && (
+                    <TransportLegControl
+                      from={stop}
+                      to={next}
+                      leg={leg}
+                      currency={currency}
+                      disabled={busy}
+                      onUpdate={(changes) =>
+                        onUpdateLeg(stop.id, next.id, changes)
+                      }
+                    />
+                  )}
+                </div>
+              );
+            })}
           </SortableContext>
         </DndContext>
       </div>

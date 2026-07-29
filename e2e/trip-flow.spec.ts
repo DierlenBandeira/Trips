@@ -17,6 +17,16 @@ type MockStop = {
   created_at: string;
   updated_at: string;
 };
+type MockLeg = {
+  id: string;
+  trip_id: string;
+  from_stop_id: string;
+  to_stop_id: string;
+  transport_mode: "road" | "flight";
+  transport_cost: number;
+  created_at: string;
+  updated_at: string;
+};
 
 const now = "2026-07-28T12:00:00.000Z";
 const tripId = "a773d8f0-04bd-4778-8e8b-12c404f01995";
@@ -27,6 +37,7 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   context,
 }) => {
   const stops: MockStop[] = [];
+  const legs: MockLeg[] = [];
   const reverseCoordinates: Array<{
     latitude: number;
     longitude: number;
@@ -82,7 +93,7 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
     }),
   );
   await context.route("**/api/**", async (route) => {
-    await mockApi(route, trip, stops, reverseCoordinates);
+    await mockApi(route, trip, stops, legs, reverseCoordinates);
   });
 
   const homeResponse = await page.goto("/");
@@ -170,6 +181,18 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   ).toHaveCount(0);
   await addDestination(page, "Berlim");
   await expect(page.locator(".destination-card")).toHaveCount(3);
+  const lisbonToBudapest = page.getByRole("region", {
+    name: "Transporte de Lisboa para Budapeste",
+  });
+  await lisbonToBudapest.getByRole("button", { name: "Avião" }).click();
+  await lisbonToBudapest
+    .getByLabel("Valor da passagem de Lisboa para Budapeste")
+    .fill("250");
+  await lisbonToBudapest
+    .getByLabel("Valor da passagem de Lisboa para Budapeste")
+    .press("Tab");
+  await expect(lisbonToBudapest).toContainText("€ 250");
+  await expect(page.locator(".map-kpis")).toContainText("€ 250");
 
   const berlinCard = page.locator(".destination-card").filter({
     hasText: "Berlim",
@@ -181,6 +204,11 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   await expect(page.getByText("Salvo", { exact: true })).toBeVisible();
 
   await page.reload();
+  await expect(
+    page.getByRole("region", {
+      name: "Transporte de Lisboa para Budapeste",
+    }),
+  ).toContainText("€ 250");
   const persistedBerlinCard = page.locator(".destination-card").filter({
     hasText: "Berlim",
   });
@@ -252,6 +280,7 @@ async function mockApi(
     updated_at: string;
   },
   stops: MockStop[],
+  legs: MockLeg[],
   reverseCoordinates: Array<{
     latitude: number;
     longitude: number;
@@ -271,7 +300,7 @@ async function mockApi(
     });
   }
   if (path === `/api/trips/${tripId}` && method === "GET") {
-    return fulfill(route, { ...trip, stops });
+    return fulfill(route, { ...trip, stops, legs });
   }
   if (path === `/api/trips/${tripId}` && method === "PATCH") {
     const body = request.postDataJSON();
@@ -321,6 +350,32 @@ async function mockApi(
       stop.position = position;
     });
     return fulfill(route, { deleted: true });
+  }
+  if (path === `/api/trips/${tripId}/legs` && method === "PUT") {
+    const body = request.postDataJSON();
+    let leg = legs.find(
+      (item) =>
+        item.from_stop_id === body.fromStopId &&
+        item.to_stop_id === body.toStopId,
+    );
+    if (!leg) {
+      leg = {
+        id: crypto.randomUUID(),
+        trip_id: tripId,
+        from_stop_id: body.fromStopId,
+        to_stop_id: body.toStopId,
+        transport_mode: body.transportMode,
+        transport_cost: body.transportCost,
+        created_at: now,
+        updated_at: now,
+      };
+      legs.push(leg);
+    } else {
+      leg.transport_mode = body.transportMode;
+      leg.transport_cost =
+        body.transportMode === "flight" ? body.transportCost : 0;
+    }
+    return fulfill(route, leg);
   }
   if (
     path.startsWith(`/api/trips/${tripId}/stops/`) &&
@@ -400,6 +455,7 @@ async function mockApi(
       travelers_count: trip.travelers_count,
       visibility: trip.visibility,
       stops,
+      legs,
       route: null,
     });
   }

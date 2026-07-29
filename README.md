@@ -8,6 +8,8 @@ interativo e KPIs calculados em tempo real.
 
 - até 50 destinos com busca Photon/OpenStreetMap;
 - rota rodoviária OSRM com cache persistido e fallback linear;
+- trechos configuráveis como rodoviário ou avião, com arco aéreo no mapa e
+  custo de passagem;
 - reordenação por mouse, toque ou teclado;
 - custos, noites, distância e duração calculados em tempo real;
 - autosave com debounce e recuperação completa do estado;
@@ -143,6 +145,7 @@ Depois do deploy:
 - `POST /api/trips/:tripId/stops`
 - `PATCH|DELETE /api/trips/:tripId/stops/:stopId`
 - `PUT /api/trips/:tripId/stops/reorder`
+- `PUT /api/trips/:tripId/legs`
 - `GET /api/public/trips/by-slug/:slug`
 - `GET /api/geocoding/search?tripId=:tripId&q=:query`
 - `GET /api/geocoding/reverse?tripId=:tripId&lat=:latitude&lon=:longitude`

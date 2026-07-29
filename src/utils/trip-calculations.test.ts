@@ -18,6 +18,23 @@ describe("trip calculations", () => {
       destinationCount: 2,
       averageNightlyCost: 88,
       lodgingPerPerson: 220,
+      transportTotal: 0,
+      estimatedTotal: 440,
+      totalPerPerson: 220,
+    });
+  });
+
+  it("adds flight tickets to the estimated trip total", () => {
+    expect(
+      calculateTripKpis(stops, 2, [
+        { transport_mode: "flight", transport_cost: 300 },
+        { transport_mode: "road", transport_cost: 80 },
+      ]),
+    ).toMatchObject({
+      lodgingTotal: 440,
+      transportTotal: 300,
+      estimatedTotal: 740,
+      totalPerPerson: 370,
     });
   });
 

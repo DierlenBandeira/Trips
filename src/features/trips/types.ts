@@ -1,4 +1,16 @@
 export type Currency = "EUR" | "BRL" | "USD" | "GBP";
+export type TransportMode = "road" | "flight";
+
+export type TripLeg = {
+  id: string;
+  trip_id: string;
+  from_stop_id: string;
+  to_stop_id: string;
+  transport_mode: TransportMode;
+  transport_cost: number;
+  created_at: string;
+  updated_at: string;
+};
 
 export type TripStop = {
   id: string;
@@ -28,6 +40,7 @@ export type Trip = {
   created_at: string;
   updated_at: string;
   stops: TripStop[];
+  legs: TripLeg[];
 };
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";

@@ -26,6 +26,7 @@ import type {
   Currency,
   SaveStatus,
   Trip,
+  TripLeg,
   TripStop,
 } from "@/features/trips/types";
 import type { GeocodingResult } from "@/features/geocoding/types";
@@ -95,6 +96,13 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
   const [shareUrl, setShareUrl] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
   const trip = state.trip;
+  const activeLegs = trip.legs.filter((leg) =>
+    trip.stops.some(
+      (stop, index) =>
+        stop.id === leg.from_stop_id &&
+        trip.stops[index + 1]?.id === leg.to_stop_id,
+    ),
+  );
   const latestTripRef = useRef(trip);
   const tripDirtyRef = useRef(false);
   const tripRevisionRef = useRef(0);
@@ -329,6 +337,77 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
     }
   }
 
+  async function updateLeg(
+    fromStopId: string,
+    toStopId: string,
+    changes: Pick<TripLeg, "transport_mode" | "transport_cost">,
+  ) {
+    const previousLegs = trip.legs;
+    const existing = previousLegs.find(
+      (leg) =>
+        leg.from_stop_id === fromStopId && leg.to_stop_id === toStopId,
+    );
+    const optimistic: TripLeg = {
+      id: existing?.id ?? `pending-${fromStopId}-${toStopId}`,
+      trip_id: trip.id,
+      from_stop_id: fromStopId,
+      to_stop_id: toStopId,
+      transport_mode: changes.transport_mode,
+      transport_cost:
+        changes.transport_mode === "flight" ? changes.transport_cost : 0,
+      created_at: existing?.created_at ?? new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    dispatch({
+      type: "update-trip",
+      changes: {
+        legs: [
+          ...previousLegs.filter(
+            (leg) =>
+              leg.from_stop_id !== fromStopId ||
+              leg.to_stop_id !== toStopId,
+          ),
+          optimistic,
+        ],
+      },
+    });
+    beginSave();
+    setError("");
+    try {
+      const saved = await apiRequest<TripLeg>(
+        `/api/trips/${trip.id}/legs`,
+        jsonRequest("PUT", {
+          fromStopId,
+          toStopId,
+          transportMode: changes.transport_mode,
+          transportCost: changes.transport_cost,
+        }),
+      );
+      dispatch({
+        type: "update-trip",
+        changes: {
+          legs: [
+            ...latestTripRef.current.legs.filter(
+              (leg) =>
+                leg.from_stop_id !== fromStopId ||
+                leg.to_stop_id !== toStopId,
+            ),
+            saved,
+          ],
+        },
+      });
+      finishSave(true);
+    } catch (cause) {
+      dispatch({ type: "update-trip", changes: { legs: previousLegs } });
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível salvar o trecho.",
+      );
+      finishSave(false);
+    }
+  }
+
   const persistTrip = useCallback(async () => {
     const revision = tripRevisionRef.current;
     beginSave();
@@ -542,6 +621,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
         <DestinationPanel
           tripId={trip.id}
           stops={trip.stops}
+          legs={trip.legs}
           currency={trip.currency}
           selectedStopId={state.selectedStopId}
           busy={busy}
@@ -551,10 +631,12 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
           onUpdate={flushStopSave}
           onSelect={selectStop}
           onReorder={reorder}
+          onUpdateLeg={updateLeg}
         />
         <section className="map-area">
           <TripMap
             stops={trip.stops}
+            legs={activeLegs}
             currency={trip.currency}
             selectedStopId={state.selectedStopId}
             onSelectStop={selectStop}
@@ -595,6 +677,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
           </div>
           <TripKpiCard
             stops={trip.stops}
+            legs={activeLegs}
             travelersCount={trip.travelers_count}
             currency={trip.currency}
           />
