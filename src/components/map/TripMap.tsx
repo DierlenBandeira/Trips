@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Feature, MultiLineString } from "geojson";
 import {
   AttributionControl,
   LngLatBounds,
@@ -10,7 +9,6 @@ import {
   NavigationControl,
   Popup,
   type ExpressionSpecification,
-  type GeoJSONSource,
   type StyleSpecification,
 } from "maplibre-gl";
 import type { TripLeg, TripStop } from "@/features/trips/types";
@@ -85,8 +83,8 @@ export function TripMap({
   ariaLabel = "Mapa da viagem",
 }: TripMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const flightOverlayRef = useRef<SVGSVGElement>(null);
-  const drawFlightOverlayRef = useRef<() => void>(() => undefined);
+  const routeOverlayRef = useRef<SVGSVGElement>(null);
+  const drawRouteOverlayRef = useRef<() => void>(() => undefined);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<MapLibreMarker[]>([]);
   const addPointRef = useRef(onAddPoint);
@@ -144,8 +142,8 @@ export function TripMap({
           );
         };
         map.on("moveend", syncViewportState);
-        map.on("move", () => drawFlightOverlayRef.current());
-        map.on("resize", () => drawFlightOverlayRef.current());
+        map.on("move", () => drawRouteOverlayRef.current());
+        map.on("resize", () => drawRouteOverlayRef.current());
         map.once("load", syncViewportState);
         syncViewportState();
         mapRef.current = map;
@@ -159,7 +157,7 @@ export function TripMap({
       markersRef.current = [];
       mapRef.current?.remove();
       mapRef.current = null;
-      drawFlightOverlayRef.current = () => undefined;
+      drawRouteOverlayRef.current = () => undefined;
     };
   }, [readOnly]);
 
@@ -205,37 +203,14 @@ export function TripMap({
         "data-flight-segments",
         String(segments.flights.length),
       );
-      const routeFeature: Feature<MultiLineString> = {
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "MultiLineString",
-          coordinates: segments.road,
-        },
-      };
-      const source = map.getSource<GeoJSONSource>("trip-route");
-      if (source) {
-        source.setData(routeFeature);
-      } else if (map.isStyleLoaded()) {
-        map.addSource("trip-route", { type: "geojson", data: routeFeature });
-      }
-      if (!map.getLayer("trip-route-line") && map.isStyleLoaded()) {
-        map.addLayer({
-          id: "trip-route-line",
-          type: "line",
-          source: "trip-route",
-          paint: {
-            "line-color": "#f05d3d",
-            "line-width": 4.5,
-            "line-opacity": 0.9,
-          },
-          layout: { "line-cap": "round", "line-join": "round" },
-        });
-      }
-
-      drawFlightOverlayRef.current = () =>
-        drawFlightOverlay(map, flightOverlayRef.current, segments.flights);
-      drawFlightOverlayRef.current();
+      drawRouteOverlayRef.current = () =>
+        drawRouteOverlay(
+          map,
+          routeOverlayRef.current,
+          segments.road,
+          segments.flights,
+        );
+      drawRouteOverlayRef.current();
 
       if (!initialViewportAppliedRef.current) {
         initialViewportAppliedRef.current = true;
@@ -272,8 +247,8 @@ export function TripMap({
         aria-label={ariaLabel}
       />
       <svg
-        ref={flightOverlayRef}
-        className="flight-route-overlay"
+        ref={routeOverlayRef}
+        className="route-overlay"
         aria-hidden="true"
       />
       {!readOnly && hint && (
@@ -370,23 +345,33 @@ function escapeHtml(value: string) {
   );
 }
 
-function drawFlightOverlay(
+function drawRouteOverlay(
   map: MapLibreMap,
   overlay: SVGSVGElement | null,
+  road: Array<Array<[number, number]>>,
   flights: Array<Array<[number, number]>>,
 ) {
   if (!overlay) return;
-  overlay.replaceChildren();
+  const target = overlay;
+  target.replaceChildren();
   const canvas = map.getCanvas();
-  overlay.setAttribute("viewBox", `0 0 ${canvas.clientWidth} ${canvas.clientHeight}`);
-  overlay.setAttribute(
+  target.setAttribute("viewBox", `0 0 ${canvas.clientWidth} ${canvas.clientHeight}`);
+  target.setAttribute(
+    "data-visible-road-paths",
+    String(road.length),
+  );
+  target.setAttribute(
     "data-visible-flight-paths",
     String(flights.length),
   );
   const namespace = "http://www.w3.org/2000/svg";
 
-  for (const flight of flights) {
-    const pathData = flight
+  function appendRoute(
+    coordinates: Array<[number, number]>,
+    casingClass: string,
+    lineClass: string,
+  ) {
+    const pathData = coordinates
       .map(([longitude, latitude], index) => {
         const point = map.project([longitude, latitude]);
         return `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`;
@@ -394,11 +379,18 @@ function drawFlightOverlay(
       .join(" ");
     const casing = document.createElementNS(namespace, "path");
     casing.setAttribute("d", pathData);
-    casing.setAttribute("class", "flight-route-casing");
-    overlay.append(casing);
+    casing.setAttribute("class", casingClass);
+    target.append(casing);
     const line = document.createElementNS(namespace, "path");
     line.setAttribute("d", pathData);
-    line.setAttribute("class", "flight-route-line");
-    overlay.append(line);
+    line.setAttribute("class", lineClass);
+    target.append(line);
+  }
+
+  for (const segment of road) {
+    appendRoute(segment, "road-route-casing", "road-route-line");
+  }
+  for (const flight of flights) {
+    appendRoute(flight, "flight-route-casing", "flight-route-line");
   }
 }

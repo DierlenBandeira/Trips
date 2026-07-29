@@ -195,8 +195,12 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   await expect(page.locator(".map-kpis")).toContainText("€ 250");
   await expect(editorMapRegion).toHaveAttribute("data-flight-segments", "1");
   await expect(editorMapRegion).toHaveAttribute("data-road-segments", "1");
-  await expect(page.locator(".flight-route-overlay")).toHaveAttribute(
+  await expect(page.locator(".route-overlay")).toHaveAttribute(
     "data-visible-flight-paths",
+    "1",
+  );
+  await expect(page.locator(".route-overlay")).toHaveAttribute(
+    "data-visible-road-paths",
     "1",
   );
 
