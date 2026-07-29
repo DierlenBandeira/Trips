@@ -1,10 +1,13 @@
 import { z } from "zod";
-import { cookies } from "next/headers";
 import { updateTripSchema } from "@/lib/api/schemas";
 import { applyRateLimit } from "@/lib/api/rate-limit";
 import { assertSameOrigin, readJsonBody } from "@/lib/api/request";
 import { fail, handleApiError, ok } from "@/lib/api/response";
-import { editCookieName, generateToken } from "@/lib/api/tokens";
+import {
+  EDIT_COOKIE_PATH,
+  editCookieName,
+  generateToken,
+} from "@/lib/api/tokens";
 import {
   getTripWithStops,
   requireTripEditor,
@@ -96,8 +99,15 @@ export async function DELETE(request: Request, context: Context) {
       .eq("id", tripId);
     if (error) throw new Error("Database delete failed");
     if (!count) return fail("NOT_FOUND", "Viagem não encontrada.", 404);
-    (await cookies()).delete(editCookieName(tripId));
-    return ok({ deleted: true });
+    const response = ok({ deleted: true });
+    response.cookies.set(editCookieName(tripId), "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: EDIT_COOKIE_PATH,
+      maxAge: 0,
+    });
+    return response;
   } catch (error) {
     return handleApiError(error);
   }

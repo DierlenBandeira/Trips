@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:production": "node scripts/production-smoke.mjs",
     "audit:prod": "npm audit --omit=dev",
     "check": "npm run lint && npm run test && npm run build",
     "supabase:init": "supabase init",

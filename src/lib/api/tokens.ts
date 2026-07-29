@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 
 export const EDIT_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+export const EDIT_COOKIE_PATH = "/api";
 
 export function generateToken() {
   return randomBytes(32).toString("base64url");

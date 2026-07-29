@@ -18,5 +18,15 @@ export default defineConfig([
     },
   },
   reactHooks.configs.flat["recommended-latest"],
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        fetch: "readonly",
+        process: "readonly",
+      },
+    },
+  },
   globalIgnores([".next/**", "node_modules/**", "next-env.d.ts"]),
 ]);

@@ -5,6 +5,7 @@ import { readJsonBody } from "@/lib/api/request";
 import { fail, handleApiError, ok } from "@/lib/api/response";
 import {
   EDIT_COOKIE_MAX_AGE,
+  EDIT_COOKIE_PATH,
   editCookieName,
   generateToken,
   hashToken,
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      path: `/api/trips/${data.id}`,
+      path: EDIT_COOKIE_PATH,
       maxAge: EDIT_COOKIE_MAX_AGE,
     });
     return response;

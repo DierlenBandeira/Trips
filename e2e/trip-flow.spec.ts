@@ -163,7 +163,7 @@ async function mockApi(
   }
   if (path === "/api/trips" && method === "POST") {
     return fulfill(route, trip, 201, {
-      "set-cookie": `trip_edit_${tripId}=test-token; Path=/api/trips/${tripId}; HttpOnly; SameSite=Lax`,
+      "set-cookie": `trip_edit_${tripId}=test-token; Path=/api; HttpOnly; SameSite=Lax`,
     });
   }
   if (path === `/api/trips/${tripId}` && method === "GET") {
