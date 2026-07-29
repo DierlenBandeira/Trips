@@ -94,6 +94,15 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   await berlinCard.getByLabel("Noites").fill("3");
   await berlinCard.getByLabel("Noites").press("Tab");
   await expect(berlinCard).toContainText("€ 360");
+  await expect(page.getByText("Salvo", { exact: true })).toBeVisible();
+
+  await page.reload();
+  const persistedBerlinCard = page.locator(".destination-card").filter({
+    hasText: "Berlim",
+  });
+  await expect(persistedBerlinCard.getByLabel("Diária")).toHaveValue("120");
+  await expect(persistedBerlinCard.getByLabel("Noites")).toHaveValue("3");
+  await expect(persistedBerlinCard).toContainText("€ 360");
 
   const dragHandle = page.getByRole("button", {
     name: "Reordenar Berlim",

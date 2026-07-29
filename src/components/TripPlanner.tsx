@@ -220,7 +220,8 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
           type: "update-stop",
           stopId,
           changes: {
-            ...updated,
+            updated_at: updated.updated_at,
+            ...changes,
             ...pendingStopChangesRef.current.get(stopId),
           },
         });
