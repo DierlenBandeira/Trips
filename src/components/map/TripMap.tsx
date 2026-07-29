@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AttributionControl,
   LngLatBounds,
@@ -8,6 +8,7 @@ import {
   Marker as MapLibreMarker,
   NavigationControl,
   Popup,
+  type ExpressionSpecification,
   type GeoJSONSource,
   type StyleSpecification,
 } from "maplibre-gl";
@@ -15,7 +16,16 @@ import type { TripStop } from "@/features/trips/types";
 import type { RouteResult } from "@/features/routing/types";
 import { formatCurrency, stopSubtotal } from "@/utils/trip-calculations";
 
-const osmStyle: StyleSpecification = {
+const mapStyleUrl = "https://tiles.openfreemap.org/styles/positron";
+const vectorTileJsonUrl = "https://tiles.openfreemap.org/planet";
+const portugueseNameExpression: ExpressionSpecification = [
+  "coalesce",
+  ["get", "name:pt"],
+  ["get", "name:latin"],
+  ["get", "name_en"],
+  ["get", "name"],
+];
+const rasterFallbackStyle: StyleSpecification = {
   version: 8,
   sources: {
     osm: {
@@ -74,6 +84,7 @@ export function TripMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<MapLibreMarker[]>([]);
   const addPointRef = useRef(onAddPoint);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     addPointRef.current = onAddPoint;
@@ -81,34 +92,44 @@ export function TripMap({
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    let disposed = false;
+    const controller = new AbortController();
 
-    const map = new MapLibreMap({
-      container: containerRef.current,
-      style: osmStyle,
-      center: [12.5, 46.5],
-      zoom: 4,
-      attributionControl: false,
-    });
-    map.addControl(new NavigationControl(), "top-right");
-    map.addControl(
-      new AttributionControl({ compact: true }),
-      "bottom-left",
-    );
-    if (!readOnly) {
-      map.getCanvas().style.cursor = "crosshair";
-      map.on("click", (event) => {
-        addPointRef.current({
-          latitude: event.lngLat.lat,
-          longitude: event.lngLat.lng,
+    void loadPortugueseMapStyle(controller.signal)
+      .catch(() => rasterFallbackStyle)
+      .then((style) => {
+        if (disposed || !containerRef.current) return;
+        const map = new MapLibreMap({
+          container: containerRef.current,
+          style,
+          center: [12.5, 46.5],
+          zoom: 4,
+          attributionControl: false,
         });
+        map.addControl(new NavigationControl(), "top-right");
+        map.addControl(
+          new AttributionControl({ compact: true }),
+          "bottom-left",
+        );
+        if (!readOnly) {
+          map.getCanvas().style.cursor = "crosshair";
+          map.on("click", (event) => {
+            addPointRef.current({
+              latitude: event.lngLat.lat,
+              longitude: event.lngLat.lng,
+            });
+          });
+        }
+        mapRef.current = map;
+        setMapReady(true);
       });
-    }
-    mapRef.current = map;
 
     return () => {
+      disposed = true;
+      controller.abort();
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
-      map.remove();
+      mapRef.current?.remove();
       mapRef.current = null;
     };
   }, [readOnly]);
@@ -195,7 +216,7 @@ export function TripMap({
 
     if (map.isStyleLoaded()) draw();
     else map.once("load", draw);
-  }, [currency, onSelectStop, route, selectedStopId, stops]);
+  }, [currency, mapReady, onSelectStop, route, selectedStopId, stops]);
 
   return (
     <div className="map-shell">
@@ -233,6 +254,56 @@ export function TripMap({
       )}
     </div>
   );
+}
+
+async function loadPortugueseMapStyle(signal: AbortSignal) {
+  const [styleResponse, tileJsonResponse] = await Promise.all([
+    fetch(mapStyleUrl, { signal, cache: "force-cache" }),
+    fetch(vectorTileJsonUrl, { signal, cache: "no-store" }),
+  ]);
+  if (!styleResponse.ok || !tileJsonResponse.ok) {
+    throw new Error("Map style failed");
+  }
+  const style = (await styleResponse.json()) as StyleSpecification;
+  const tileJson = (await tileJsonResponse.json()) as {
+    tiles?: unknown;
+    attribution?: unknown;
+    minzoom?: unknown;
+    maxzoom?: unknown;
+  };
+  if (
+    !Array.isArray(tileJson.tiles) ||
+    !tileJson.tiles.every(
+      (url) =>
+        typeof url === "string" &&
+        url.startsWith("https://tiles.openfreemap.org/"),
+    )
+  ) {
+    throw new Error("Vector tiles missing");
+  }
+  const source = style.sources.openmaptiles;
+  if (source?.type !== "vector") throw new Error("Vector source missing");
+  delete source.url;
+  source.tiles = tileJson.tiles;
+  source.minzoom =
+    typeof tileJson.minzoom === "number" ? tileJson.minzoom : 0;
+  source.maxzoom =
+    typeof tileJson.maxzoom === "number" ? tileJson.maxzoom : 14;
+  source.attribution =
+    typeof tileJson.attribution === "string"
+      ? tileJson.attribution
+      : "© OpenFreeMap, OpenMapTiles and OpenStreetMap contributors";
+
+  for (const layer of style.layers) {
+    if (layer.type !== "symbol") continue;
+    const textField = layer.layout?.["text-field"];
+    if (!textField || !JSON.stringify(textField).includes("name")) continue;
+    layer.layout = {
+      ...layer.layout,
+      "text-field": portugueseNameExpression,
+    };
+  }
+  return style;
 }
 
 function escapeHtml(value: string) {

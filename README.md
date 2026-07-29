@@ -18,7 +18,8 @@ interativo e KPIs calculados em tempo real.
 ## Tecnologias
 
 - Next.js 16 com App Router, React 19 e TypeScript;
-- MapLibre GL JS com tiles OpenStreetMap;
+- MapLibre GL JS com mapa vetorial OpenFreeMap/OpenStreetMap e rótulos em
+  português quando disponíveis;
 - dnd-kit para reordenação por mouse, toque ou teclado;
 - React Hook Form e Zod;
 - Supabase PostgreSQL com RLS;
@@ -175,7 +176,9 @@ campos permitidos e nunca concede escrita.
   instâncias próprias;
 - a rota suporta 50 paradas dividindo solicitações em blocos de 25; pequenas
   diferenças podem ocorrer na junção dos segmentos;
-- tiles públicos OpenStreetMap não oferecem SLA para produção;
+- o OpenFreeMap público não exige chave nem impõe limite de visualizações, mas
+  não oferece SLA; os rótulos sem tradução em português usam o nome latino ou
+  local como fallback;
 - rate limiting em memória não é compartilhado entre instâncias serverless;
 - o cache de rota no Supabase cresce por combinação de coordenadas/ordem e
   ainda não possui rotina automática de expiração.

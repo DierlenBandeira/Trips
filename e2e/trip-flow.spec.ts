@@ -40,14 +40,41 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   };
 
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await context.route("https://tile.openstreetmap.org/**", (route) =>
+  await context.route("https://tiles.openfreemap.org/styles/positron", (route) =>
     route.fulfill({
       status: 200,
-      contentType: "image/png",
-      body: Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-        "base64",
-      ),
+      contentType: "application/json",
+      body: JSON.stringify({
+        version: 8,
+        sources: {
+          openmaptiles: {
+            type: "vector",
+            url: "https://tiles.openfreemap.org/planet",
+          },
+        },
+        layers: [
+          {
+            id: "background",
+            type: "background",
+            paint: { "background-color": "#dce5df" },
+          },
+        ],
+      }),
+    }),
+  );
+  await context.route("https://tiles.openfreemap.org/planet", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        tilejson: "3.0.0",
+        tiles: [
+          "https://tiles.openfreemap.org/test/{z}/{x}/{y}.pbf",
+        ],
+        minzoom: 0,
+        maxzoom: 14,
+        attribution: "OpenStreetMap contributors",
+      }),
     }),
   );
   await context.route("**/api/**", async (route) => {
