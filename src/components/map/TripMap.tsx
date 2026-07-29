@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Feature, LineString, MultiLineString } from "geojson";
+import type { Feature, MultiLineString } from "geojson";
 import {
   AttributionControl,
   LngLatBounds,
@@ -15,6 +15,7 @@ import {
 } from "maplibre-gl";
 import type { TripLeg, TripStop } from "@/features/trips/types";
 import type { RouteResult } from "@/features/routing/types";
+import { createMapSegments } from "@/features/routing/map-segments";
 import { formatCurrency, stopSubtotal } from "@/utils/trip-calculations";
 
 const mapStyleUrl = "https://tiles.openfreemap.org/styles/positron";
@@ -186,59 +187,27 @@ export function TripMap({
           .addTo(map);
       });
 
-      const legByPair = new Map(
-        legs.map((leg) => [
-          `${leg.from_stop_id}:${leg.to_stop_id}`,
-          leg,
-        ]),
+      const segments = createMapSegments(
+        route?.geometry.coordinates,
+        stops,
+        legs,
       );
-      const hasFlights = stops.some((stop, index) => {
-        const next = stops[index + 1];
-        return (
-          next &&
-          legByPair.get(`${stop.id}:${next.id}`)?.transport_mode ===
-            "flight"
-        );
-      });
-      const roadSegments = stops.slice(0, -1).flatMap((stop, index) => {
-        const next = stops[index + 1];
-        const leg = legByPair.get(`${stop.id}:${next.id}`);
-        return leg?.transport_mode === "flight"
-          ? []
-          : [
-              [
-                [stop.longitude, stop.latitude],
-                [next.longitude, next.latitude],
-              ],
-            ];
-      });
-      const flightSegments = stops.slice(0, -1).flatMap((stop, index) => {
-        const next = stops[index + 1];
-        const leg = legByPair.get(`${stop.id}:${next.id}`);
-        return leg?.transport_mode === "flight"
-          ? [createFlightArc(stop, next)]
-          : [];
-      });
-      const routeFeature: Feature<LineString | MultiLineString> = hasFlights
-        ? {
-            type: "Feature",
-            properties: {},
-            geometry: {
-              type: "MultiLineString",
-              coordinates: roadSegments,
-            },
-          }
-        : {
-            type: "Feature",
-            properties: {},
-            geometry: {
-              type: "LineString",
-              coordinates:
-                route?.geometry.coordinates.length && stops.length >= 2
-                  ? route.geometry.coordinates
-                  : roadSegments.flat(),
-            },
-          };
+      containerRef.current?.setAttribute(
+        "data-road-segments",
+        String(segments.road.length),
+      );
+      containerRef.current?.setAttribute(
+        "data-flight-segments",
+        String(segments.flights.length),
+      );
+      const routeFeature: Feature<MultiLineString> = {
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "MultiLineString",
+          coordinates: segments.road,
+        },
+      };
       const source = map.getSource<GeoJSONSource>("trip-route");
       if (source) {
         source.setData(routeFeature);
@@ -250,9 +219,10 @@ export function TripMap({
           source: "trip-route",
           paint: {
             "line-color": "#f05d3d",
-            "line-width": 4,
-            "line-opacity": 0.82,
+            "line-width": 4.5,
+            "line-opacity": 0.9,
           },
+          layout: { "line-cap": "round", "line-join": "round" },
         });
       }
 
@@ -261,7 +231,7 @@ export function TripMap({
         properties: {},
         geometry: {
           type: "MultiLineString" as const,
-          coordinates: flightSegments,
+          coordinates: segments.flights,
         },
       };
       const flightSource =
@@ -278,11 +248,12 @@ export function TripMap({
           type: "line",
           source: "trip-flight-routes",
           paint: {
-            "line-color": "#2684ff",
-            "line-width": 4,
-            "line-opacity": 0.9,
-            "line-dasharray": [2, 1.5],
+            "line-color": "#087ff5",
+            "line-width": 6,
+            "line-opacity": 1,
+            "line-dasharray": [2.2, 1.2],
           },
+          layout: { "line-cap": "round", "line-join": "round" },
         });
       }
 
@@ -412,37 +383,4 @@ function escapeHtml(value: string) {
         "'": "&#039;",
       })[character] ?? character,
   );
-}
-
-function createFlightArc(
-  from: Pick<TripStop, "latitude" | "longitude">,
-  to: Pick<TripStop, "latitude" | "longitude">,
-) {
-  let longitudeDelta = to.longitude - from.longitude;
-  if (longitudeDelta > 180) longitudeDelta -= 360;
-  if (longitudeDelta < -180) longitudeDelta += 360;
-  const latitudeDelta = to.latitude - from.latitude;
-  const bend = Math.min(18, Math.hypot(longitudeDelta, latitudeDelta) * 0.18);
-  const length = Math.hypot(longitudeDelta, latitudeDelta) || 1;
-  const perpendicularLongitude = (-latitudeDelta / length) * bend;
-  const perpendicularLatitude = (longitudeDelta / length) * bend;
-
-  return Array.from({ length: 33 }, (_, index) => {
-    const progress = index / 32;
-    const curve = 4 * progress * (1 - progress);
-    let longitude =
-      from.longitude + longitudeDelta * progress +
-      perpendicularLongitude * curve;
-    longitude = ((longitude + 540) % 360) - 180;
-    const latitude = Math.max(
-      -85,
-      Math.min(
-        85,
-        from.latitude +
-          latitudeDelta * progress +
-          perpendicularLatitude * curve,
-      ),
-    );
-    return [longitude, latitude];
-  });
 }

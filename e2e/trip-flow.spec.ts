@@ -193,6 +193,8 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
     .press("Tab");
   await expect(lisbonToBudapest).toContainText("€ 250");
   await expect(page.locator(".map-kpis")).toContainText("€ 250");
+  await expect(editorMapRegion).toHaveAttribute("data-flight-segments", "1");
+  await expect(editorMapRegion).toHaveAttribute("data-road-segments", "1");
 
   const berlinCard = page.locator(".destination-card").filter({
     hasText: "Berlim",
