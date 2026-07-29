@@ -84,6 +84,12 @@ export function TripMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<MapLibreMarker[]>([]);
   const addPointRef = useRef(onAddPoint);
+  const initialStopCoordinatesRef = useRef(
+    stops.map(
+      (stop) => [stop.longitude, stop.latitude] as [number, number],
+    ),
+  );
+  const initialViewportAppliedRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
@@ -120,6 +126,20 @@ export function TripMap({
             });
           });
         }
+        const syncViewportState = () => {
+          const center = map.getCenter();
+          containerRef.current?.setAttribute(
+            "data-map-center",
+            `${center.lng.toFixed(6)},${center.lat.toFixed(6)}`,
+          );
+          containerRef.current?.setAttribute(
+            "data-map-zoom",
+            map.getZoom().toFixed(4),
+          );
+        };
+        map.on("moveend", syncViewportState);
+        map.once("load", syncViewportState);
+        syncViewportState();
         mapRef.current = map;
         setMapReady(true);
       });
@@ -196,21 +216,25 @@ export function TripMap({
         });
       }
 
-      if (routeCoordinates.length === 1) {
-        map.easeTo({
-          center: routeCoordinates[0] as [number, number],
-          zoom: 10,
-        });
-      } else if (routeCoordinates.length > 1) {
-        const bounds = routeCoordinates.reduce(
-          (current, coordinate) =>
-            current.extend(coordinate as [number, number]),
-          new LngLatBounds(
-            routeCoordinates[0] as [number, number],
-            routeCoordinates[0] as [number, number],
-          ),
-        );
-        map.fitBounds(bounds, { padding: 90, maxZoom: 10, duration: 600 });
+      if (!initialViewportAppliedRef.current) {
+        initialViewportAppliedRef.current = true;
+        const initialCoordinates = initialStopCoordinatesRef.current;
+        if (initialCoordinates.length === 1) {
+          map.jumpTo({
+            center: initialCoordinates[0],
+            zoom: 10,
+          });
+        } else if (initialCoordinates.length > 1) {
+          const bounds = initialCoordinates.reduce(
+            (current, coordinate) =>
+              current.extend(coordinate),
+            new LngLatBounds(
+              initialCoordinates[0],
+              initialCoordinates[0],
+            ),
+          );
+          map.fitBounds(bounds, { padding: 90, maxZoom: 10, duration: 0 });
+        }
       }
     };
 

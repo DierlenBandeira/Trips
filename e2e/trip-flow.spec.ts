@@ -27,6 +27,10 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   context,
 }) => {
   const stops: MockStop[] = [];
+  const reverseCoordinates: Array<{
+    latitude: number;
+    longitude: number;
+  }> = [];
   const trip = {
     id: tripId,
     name: "Europa central",
@@ -78,7 +82,7 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
     }),
   );
   await context.route("**/api/**", async (route) => {
-    await mockApi(route, trip, stops);
+    await mockApi(route, trip, stops, reverseCoordinates);
   });
 
   const homeResponse = await page.goto("/");
@@ -113,6 +117,46 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   await addDestination(page, "Berlim");
   await addDestination(page, "Budapeste");
   await expect(page.locator(".destination-card")).toHaveCount(3);
+  await expect
+    .poll(() =>
+      page.locator(".destination-list").evaluate((element) => ({
+        overflowY: getComputedStyle(element).overflowY,
+        gutter: getComputedStyle(element).scrollbarGutter,
+      })),
+    )
+    .toEqual({ overflowY: "auto", gutter: "stable" });
+
+  const editorMapRegion = page.getByRole("region", { name: "Mapa da viagem" });
+  await expect
+    .poll(() => editorMapRegion.getAttribute("data-map-center"))
+    .not.toBeNull();
+  const viewportBefore = await editorMapRegion.evaluate((element) => ({
+    center: element.getAttribute("data-map-center"),
+    zoom: element.getAttribute("data-map-zoom"),
+  }));
+  await addDestination(page, "Tóquio");
+  const editorMap = page.locator(".map-area canvas");
+  await editorMap.click({ position: { x: 700, y: 250 } });
+  await expect(
+    page.locator(".destination-card").filter({ hasText: "Ponto 2" }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      editorMapRegion.evaluate((element) => ({
+        center: element.getAttribute("data-map-center"),
+        zoom: element.getAttribute("data-map-zoom"),
+      })),
+    )
+    .toEqual(viewportBefore);
+  await page.getByRole("button", { name: "Remover Ponto 2" }).click();
+  await page.getByRole("button", { name: "Remover Tóquio" }).click();
+
+  await page.getByRole("button", { name: "Remover Berlim" }).click();
+  await expect(
+    page.locator(".destination-card").filter({ hasText: "Berlim" }),
+  ).toHaveCount(0);
+  await addDestination(page, "Berlim");
+  await expect(page.locator(".destination-card")).toHaveCount(3);
 
   const berlinCard = page.locator(".destination-card").filter({
     hasText: "Berlim",
@@ -137,11 +181,11 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
   await dragHandle.focus();
   await dragHandle.press("Space");
   await page.waitForTimeout(150);
-  await dragHandle.press("ArrowDown");
+  await dragHandle.press("ArrowUp");
   await page.waitForTimeout(150);
   await dragHandle.press("Space");
   await expect(page.locator(".destination-heading strong").nth(1)).toHaveText(
-    "Budapeste",
+    "Berlim",
   );
 
   await page.getByRole("button", { name: "Salvar" }).click();
@@ -172,7 +216,7 @@ test("cria, edita, reordena, salva e compartilha uma viagem", async ({
 
 async function addDestination(
   page: import("@playwright/test").Page,
-  name: "Berlim" | "Budapeste",
+  name: "Berlim" | "Budapeste" | "Tóquio",
 ) {
   await page.getByPlaceholder("Cidade ou endereço").fill(name);
   await page.getByRole("option", { name: new RegExp(name) }).click();
@@ -195,6 +239,10 @@ async function mockApi(
     updated_at: string;
   },
   stops: MockStop[],
+  reverseCoordinates: Array<{
+    latitude: number;
+    longitude: number;
+  }>,
 ) {
   const request = route.request();
   const url = new URL(request.url());
@@ -227,8 +275,11 @@ async function mockApi(
   }
   if (path === `/api/trips/${tripId}/stops` && method === "POST") {
     const body = request.postDataJSON();
+    if (stops.some((stop) => stop.position === body.position)) {
+      return fulfillError(route, 409);
+    }
     const stop: MockStop = {
-      id: `00000000-0000-4000-8000-${String(stops.length + 1).padStart(12, "0")}`,
+      id: crypto.randomUUID(),
       trip_id: tripId,
       position: body.position,
       place_name: body.placeName,
@@ -245,6 +296,18 @@ async function mockApi(
     };
     stops.push(stop);
     return fulfill(route, stop, 201);
+  }
+  if (
+    path.startsWith(`/api/trips/${tripId}/stops/`) &&
+    method === "DELETE"
+  ) {
+    const index = stops.findIndex((stop) => path.endsWith(stop.id));
+    if (index < 0) return fulfillError(route, 404);
+    stops.splice(index, 1);
+    stops.forEach((stop, position) => {
+      stop.position = position;
+    });
+    return fulfill(route, { deleted: true });
   }
   if (
     path.startsWith(`/api/trips/${tripId}/stops/`) &&
@@ -275,14 +338,31 @@ async function mockApi(
     const places = {
       Berlim: place("Berlim", "Alemanha", 52.52, 13.405),
       Budapeste: place("Budapeste", "Hungria", 47.4979, 19.0402),
+      Tóquio: place("Tóquio", "Japão", 35.6762, 139.6503),
     };
-    const result = query === "Berlim" || query === "Budapeste"
+    const result =
+      query === "Berlim" || query === "Budapeste" || query === "Tóquio"
       ? [places[query]]
       : [];
     return fulfill(route, result);
   }
   if (path === "/api/geocoding/reverse") {
-    return fulfill(route, place("Lisboa", "Portugal", 38.7223, -9.1393));
+    reverseCoordinates.push({
+      latitude: Number(url.searchParams.get("lat")),
+      longitude: Number(url.searchParams.get("lon")),
+    });
+    const requestNumber = reverseCoordinates.length;
+    return fulfill(
+      route,
+      requestNumber === 1
+        ? place("Lisboa", "Portugal", 38.7223, -9.1393)
+        : place(
+            `Ponto ${requestNumber}`,
+            "Local de teste",
+            reverseCoordinates.at(-1)?.latitude ?? 0,
+            reverseCoordinates.at(-1)?.longitude ?? 0,
+          ),
+    );
   }
   if (path === "/api/routing") {
     return fulfill(route, {

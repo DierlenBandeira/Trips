@@ -155,6 +155,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
 
   const addMapPoint = useCallback(
     async (coordinates: { latitude: number; longitude: number }) => {
+      if (busy) return;
       setBusy(true);
       let result: GeocodingResult | null = null;
       try {
@@ -180,7 +181,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
         setBusy(false);
       }
     },
-    [addStop, trip.id, trip.stops.length],
+    [addStop, busy, trip.id, trip.stops.length],
   );
 
   const beginSave = useCallback(() => {

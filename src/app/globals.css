@@ -749,8 +749,20 @@ button.secondary { border: 1px solid var(--ink); color: var(--ink); background: 
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #aebbb4 transparent;
   padding: 0 12px 32px;
 }
+.destination-list::-webkit-scrollbar { width: 8px; }
+.destination-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #aebbb4;
+  background-clip: padding-box;
+}
+.destination-list::-webkit-scrollbar-track { background: transparent; }
 
 .destination-card {
   position: relative;

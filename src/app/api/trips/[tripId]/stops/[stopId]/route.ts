@@ -59,13 +59,32 @@ export async function DELETE(request: Request, context: Context) {
     if (!(await requireTripEditor(tripId))) {
       return fail("UNAUTHORIZED", "Acesso de edição inválido.", 401);
     }
-    const { error, count } = await createAdminClient()
+    const admin = createAdminClient();
+    const { error, count } = await admin
       .from("trip_stops")
       .delete({ count: "exact" })
       .eq("id", stopId)
       .eq("trip_id", tripId);
     if (error) throw new Error("Database delete failed");
-    return count ? ok({ deleted: true }) : fail("NOT_FOUND", "Parada não encontrada.", 404);
+    if (!count) {
+      return fail("NOT_FOUND", "Parada não encontrada.", 404);
+    }
+
+    const { data: remainingStops, error: readError } = await admin
+      .from("trip_stops")
+      .select("id")
+      .eq("trip_id", tripId)
+      .order("position");
+    if (readError) throw new Error("Database read failed");
+    if (remainingStops.length > 0) {
+      const { error: reorderError } = await admin.rpc("reorder_trip_stops", {
+        p_trip_id: tripId,
+        p_stop_ids: remainingStops.map((stop) => stop.id),
+      });
+      if (reorderError) throw new Error("Database reorder failed");
+    }
+
+    return ok({ deleted: true });
   } catch (error) {
     return handleApiError(error);
   }
