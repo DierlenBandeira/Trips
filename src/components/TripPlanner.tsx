@@ -560,6 +560,7 @@ function TripWorkspace({ initialTrip }: { initialTrip: Trip }) {
             onAddPoint={addMapPoint}
             route={routing.route}
             routeLoading={routing.loading}
+            emptyState={false}
           />
           <div className="trip-settings" aria-label="Configurações da viagem">
             <label>
